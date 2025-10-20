@@ -1,0 +1,1302 @@
+# app.py (Monolithic Version)
+import click
+import os
+import datetime
+import yaml
+from flask import request, jsonify
+from bs4 import BeautifulSoup
+
+# ... (rest of your imports) ...
+from flask import Flask, render_template, url_for, flash, redirect, jsonify, request # <-- ADD request
+from flask_sqlalchemy import SQLAlchemy
+from flask_bcrypt import Bcrypt
+from flask_login import LoginManager, UserMixin, login_user, current_user, logout_user, login_required
+from flask_migrate import Migrate
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SubmitField, BooleanField
+from wtforms.validators import DataRequired, Length, Email, EqualTo, ValidationError
+
+# ===================================
+# 1. APP INITIALIZATION & CONFIG
+# ===================================
+
+app = Flask(__name__)
+
+# Configuration
+app.config['SECRET_KEY'] = os.urandom(24)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://webapp_user:supersecret@localhost/my_web_app_db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize Extensions
+db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+login_manager.login_message_category = 'info'
+migrate = Migrate(app, db)
+
+# ===================================
+# 4. HELPER FUNCTIONS  <-- PASTE THE PARSER FUNCTION HERE
+# ===================================
+
+def parse_quiz_markdown(markdown_text):
+    """
+    Parses a string of markdown text and returns a list of question dictionaries.
+    Returns None if there is a parsing error.
+    """
+    # ... (the full code for this function)
+    questions = []
+    question_blocks = markdown_text.strip().split('# Question ')
+    
+    for block in question_blocks:
+        if not block.strip():
+            continue
+        try:
+            lines = block.strip().split('\n')
+            question_line = lines[0]
+            question_text = question_line.split(':', 1)[1].strip()
+            options = [line.split(':', 1)[1].strip() for line in lines[1:5]]
+            answer_line = lines[5]
+            answer_str = answer_line.split('option')[1].strip()
+            correct_option_index = int(answer_str) - 1
+            if not (0 <= correct_option_index < 4):
+                return None
+            question_data = {
+                'question_text': question_text,
+                'options': options,
+                'correct_index': correct_option_index
+            }
+            questions.append(question_data)
+        except (IndexError, ValueError) as e:
+            print(f"Error parsing block: {e}")
+            return None
+    return questions
+   
+def parse_lab_markdown(markdown_text):
+    """
+    Parses a string of lab markdown text with strict validation.
+    Returns a tuple: (list_of_steps, error_message).
+    On success, error_message is None.
+    On failure, list_of_steps is None.
+    """
+    steps = []
+    # Split the text into individual step blocks
+    step_blocks = markdown_text.strip().split('Step ')
+    
+    for block in step_blocks:
+        if not block.strip():
+            continue
+
+        try:
+            # First line is the step number and description
+            first_line, *other_lines = block.strip().split('\n')
+            step_number_str, description_text = first_line.split(':', 1)
+            step_number = int(step_number_str.strip())
+            description_text = description_text.strip()
+
+            # Find Type and match lines
+            type_line = next((line for line in other_lines if line.strip().startswith('Type:')), None)
+            match_line = next((line for line in other_lines if line.strip().startswith('- match:')), None)
+
+            # --- STRICT VALIDATION ---
+            if type_line is None:
+                return None, f"Validation Error in Step {step_number}: 'Type:' tag is missing."
+            if match_line is None:
+                return None, f"Validation Error in Step {step_number}: '- match:' tag is missing."
+            
+            # Extract and strip whitespace from both ends
+            type_text = type_line.split(':', 1)[1].strip()
+            match_text = match_line.split(':', 1)[1].strip()
+
+            # Check if fields are empty AFTER stripping
+            if not type_text:
+                return None, f"Validation Error in Step {step_number}: 'Type:' cannot be empty or just whitespace."
+            if not match_text:
+                 return None, f"Validation Error in Step {step_number}: '- match:' cannot be empty or just whitespace."
+
+            # Compare the cleaned-up values
+            if type_text != match_text:
+                return None, f"Validation Error in Step {step_number}: 'Type:' and '- match:' values do not match. Got '{type_text}' and '{match_text}'."
+            
+            # --- END OF VALIDATION ---
+
+            step_data = {
+                'step_number': step_number,
+                'description_text': description_text,
+                'type_text': type_text,
+                'match_text': match_text
+            }
+            steps.append(step_data)
+
+        except (ValueError, IndexError) as e:
+            return None, f"Formatting Error: A step block is malformed. Please check the structure around: '{block[:50]}...'. Error: {e}"
+
+    # Final check: ensure steps are sequential
+    for i, step in enumerate(steps):
+        if step['step_number'] != i + 1:
+            return None, f"Sequence Error: Steps are not in sequential order. Expected step {i+1} but found {step['step_number']}."
+            
+    return steps, None # Success
+    
+# app.py -> In the HELPER FUNCTIONS section
+
+def parse_session_yaml(yaml_text):
+    """
+    Parses a YAML string for a Practical Session.
+    Returns a tuple: (parsed_data, error_message).
+    """
+    try:
+        data = yaml.safe_load(yaml_text)
+    except yaml.YAMLError as e:
+        return None, f"YAML Formatting Error: {e}"
+
+    # --- Structure Validation ---
+    if not isinstance(data, dict):
+        return None, "Validation Error: The root of the YAML file must be a dictionary."
+
+    title = data.get('title')
+    if not title or not isinstance(title, str):
+        return None, "Validation Error: A 'title' string is required at the root of the file."
+
+    requirements = data.get('requirements')
+    if not requirements or not isinstance(requirements, list):
+        return None, "Validation Error: A 'requirements' list is required."
+
+    # --- Requirement Field Validation ---
+    for i, req in enumerate(requirements, 1):
+        if not isinstance(req, dict):
+            return None, f"Validation Error in Requirement #{i}: Each requirement must be a dictionary."
+        if 'description' not in req or not isinstance(req['description'], str):
+            return None, f"Validation Error in Requirement #{i}: A 'description' string is required."
+        if 'check_type' not in req or not isinstance(req['check_type'], str):
+            return None, f"Validation Error in Requirement #{i}: A 'check_type' string is required."
+
+    return {'title': title, 'requirements': requirements}, None # Success
+    
+# app.py -> In the HELPER FUNCTIONS section
+def validate_user_code(user_html, requiremeants):
+    """
+    Validates a user's HTML code against a list of requirement objects.
+    Returns a list of booleans indicating the pass/fail status of each requirement.
+    """
+    try:
+        soup = BeautifulSoup(user_html, 'html.parser')
+        results = []
+
+        for req in requirements:
+            check_type = req.check_type
+            selector = req.selector
+            attr_name = req.attribute_name
+            expected_value = req.value
+            is_valid = False
+
+            element = soup.select_one(selector) if selector else None
+
+            if check_type == "doctype_exists":
+                # BeautifulSoup's handling of doctype is a bit special
+                doctype = soup.doctype if hasattr(soup, 'doctype') else None
+                if doctype and expected_value.lower() in str(doctype).lower():
+                    is_valid = True
+            
+            elif element: # Most checks require the element to exist first
+                if check_type == "element_exists":
+                    is_valid = True
+                
+                elif check_type == "attribute_exists":
+                    if attr_name and element.has_attr(attr_name):
+                        if expected_value is not None:
+                            # Check for both attribute presence and its value
+                            if element[attr_name] == expected_value:
+                                is_valid = True
+                        else:
+                            # Just check for attribute presence
+                            is_valid = True
+                
+                elif check_type == "element_has_text":
+                    # .strip() to handle leading/trailing whitespace in user's text
+                    if element.get_text().strip() == expected_value:
+                        is_valid = True
+
+            results.append(is_valid)
+            
+        return results
+
+    except Exception as e:
+        # If the user's HTML is completely broken, BeautifulSoup might fail.
+        # Return a list of all False.
+        print(f"Code validation error: {e}")
+        return [False] * len(requirements)    
+        
+# app.py -> API ROUTES section
+@app.route("/api/lab/check_step", methods=['POST'])
+@login_required
+def check_lab_step():
+    data = request.get_json()
+    try:
+        step_id = int(data.get('step_id'))
+        user_input = data.get('user_input', '')
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid or missing data'}), 400
+
+    step = LabStep.query.get(step_id)
+    if not step:
+        return jsonify({'error': 'Step not found'}), 404
+
+    cleaned_user_input = user_input.strip()
+    is_correct = (cleaned_user_input == step.match_text)
+
+    if is_correct:
+        progress = LabProgress.query.filter_by(user_id=current_user.id, lab_id=step.lab_id).first()
+        if progress and progress.current_step_number == step.step_number:
+            progress.current_step_number += 1
+            db.session.commit()
+        
+        # --- NEW COMPLETION LOGIC ---
+        total_steps = len(step.lab.steps) # Get total steps from the relationship
+        
+        # Check if the step they just finished was the last one
+        if step.step_number >= total_steps:
+            # If so, generate the URL for the completion page
+            next_url = url_for('lab_complete', lab_id=step.lab_id)
+        else:
+            # Otherwise, generate the URL for the next step
+            next_step_number = step.step_number + 1
+            next_url = url_for('lab_step_viewer', lab_id=step.lab_id, step_number=next_step_number)
+        
+        return jsonify({'correct': True, 'next_url': next_url})
+        # --- END OF NEW LOGIC ---
+    else:
+        return jsonify({'correct': False, 'message': 'Input does not match. Please check for typos and try again.'})
+
+@app.route("/api/lab/check_step", methods=['POST'])
+@login_required
+def check_step():
+    """API endpoint to validate a user's input for a lab step."""
+    data = request.get_json()
+    step_id = data.get('step_id')
+    user_input = data.get('user_input')
+
+    # Basic validation of the incoming request
+    if not step_id or user_input is None: # Check for None in case of empty string
+        return jsonify({'error': 'Missing step_id or user_input'}), 400
+
+    # Fetch the correct step from the database
+    step = LabStep.query.get(step_id)
+    if not step:
+        return jsonify({'error': 'Step not found'}), 404
+
+    # --- CORE VALIDATION LOGIC ---
+    # 1. Strip whitespace from the user's input.
+    cleaned_user_input = user_input.strip()
+    
+    # 2. Compare the cleaned user input with the stored match_text.
+    #    The match_text is already clean because our parser stripped it.
+    is_correct = (cleaned_user_input == step.match_text)
+    # --- END OF CORE LOGIC ---
+
+    if is_correct:
+        # Here, you would update the user's progress (LabProgress model)
+        # For now, we'll just return success.
+        # Logic to find/update LabProgress will be added in a later step.
+        return jsonify({'correct': True})
+    else:
+        return jsonify({'correct': False, 'message': 'Incorrect. Please try again.'})
+
+# app.py -> API ROUTES section
+
+@app.route("/api/session/validate", methods=['POST'])
+@login_required
+def validate_session():
+    data = request.get_json()
+    session_id = data.get('session_id')
+    user_code = data.get('user_code')
+
+    if not session_id or user_code is None:
+        return jsonify({'error': 'Missing session_id or user_code'}), 400
+
+    session = PracticalSession.query.get(session_id)
+    if not session:
+        return jsonify({'error': 'Session not found'}), 404
+        
+    # Use our powerful validator function from Subtask 4.2
+    results = validate_user_code(user_code, session.requirements)
+
+    return jsonify({'results': results})
+# app.py -> ROUTES section
+
+# ... (after lab_list route)
+
+@app.route("/sessions")
+@login_required
+def session_list():
+    sessions = PracticalSession.query.order_by(PracticalSession.id.asc()).all()
+    return render_template('session_list.html', sessions=sessions)
+
+@app.route("/session/<int:session_id>")
+@login_required
+def session_viewer(session_id):
+    session = PracticalSession.query.get_or_404(session_id)
+    return render_template('session_viewer.html', session=session)
+
+# ... (rest of your routes)
+
+# ===================================
+# 4.5 API ROUTES
+# ===================================
+
+@app.route("/api/quiz/check_answer", methods=['POST'])
+@login_required
+def check_answer():
+    data = request.get_json()
+    question_id = data.get('question_id')
+    option_id = data.get('option_id')
+
+    # Basic validation
+    if not question_id or not option_id:
+        return jsonify({'error': 'Missing data'}), 400
+
+    selected_option = Option.query.get(option_id)
+    if not selected_option or selected_option.question_id != question_id:
+        return jsonify({'error': 'Invalid option'}), 404
+
+    is_correct = selected_option.is_correct
+
+    # If the answer is wrong, we need to send back the ID of the correct answer
+    # so the frontend can highlight it for the user.
+    if not is_correct:
+        correct_option = Option.query.filter_by(question_id=question_id, is_correct=True).first()
+        return jsonify({'correct': False, 'correct_option_id': correct_option.id})
+    else:
+        return jsonify({'correct': True, 'correct_option_id': selected_option.id})
+# app.py
+
+# ... (in your API ROUTES section) ...
+
+@app.route("/api/quiz/submit_result", methods=['POST'])
+@login_required
+def submit_result():
+    data = request.get_json()
+    quiz_id = data.get('quiz_id')
+    score = data.get('score')
+    
+    quiz = Quiz.query.get(quiz_id)
+    if not quiz:
+        return jsonify({'error': 'Quiz not found'}), 404
+
+    passed = score >= quiz.passing_score
+
+    # Create a new attempt record
+    attempt = QuizAttempt(
+        score=score,
+        passed=passed,
+        user_id=current_user.id,
+        quiz_id=quiz_id
+    )
+    db.session.add(attempt)
+    db.session.commit()
+    
+    return jsonify({'status': 'success', 'passed': passed})
+
+# ===================================
+# 6. CUSTOM CLI COMMANDS
+# ===================================
+# ... rest of your file ...
+
+# ===================================
+# 6. CUSTOM CLI COMMANDS  <-- THIS SECTION MUST COME AFTER THE HELPER FUNCTION
+# ===================================
+
+@app.cli.command("create-admin")
+# ... (create-admin function) ...
+
+@app.cli.command("process-quiz")
+@click.argument("filepath")
+def process_quiz(filepath):
+    # ... (the full code for this function)
+    # This can now safely call parse_quiz_markdown because it was defined above.
+    print(f"Attempting to process quiz file: {filepath}")
+    try:
+        with open(filepath, 'r') as f:
+            content = f.read()
+    except FileNotFoundError:
+        print(f"Error: File not found at '{filepath}'")
+        return
+
+    parsed_data = parse_quiz_markdown(content) # This will work now
+    # ... (rest of the function)
+    if not parsed_data:
+        print("Error: Parsing failed. Please check the file format. Aborting.")
+        return
+    
+    # ... (rest of the database logic) ...
+
+
+# ===================================
+# 7. APP EXECUTION
+# ===================================
+# ... (if __name__ == '__main__':) ...
+
+# ===================================
+# 2. DATABASE MODELS
+# ===================================
+
+# The UserMixin provides default implementations for the methods that Flask-Login expects.
+# app.py
+
+# ===================================
+# 2. DATABASE MODELS
+# ===================================
+
+class User(db.Model, UserMixin):
+    __tablename__ = 'user'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(20), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(60), nullable=False)
+    role = db.Column(db.String(10), nullable=False, default='user')
+    # --- ADD THIS RELATIONSHIP ---
+    attempts = db.relationship('QuizAttempt', backref='attempting_user', lazy=True)
+    lab_progress = db.relationship('LabProgress', backref='progressing_user', lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"User('{self.username}', '{self.email}', '{self.role}')"
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+# --- PASTE THE NEW MODELS BELOW ---
+
+class Quiz(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    filename = db.Column(db.String(100), unique=True, nullable=False)
+    category = db.Column(db.String(50), nullable=False, default='Quiz')
+    passing_score = db.Column(db.Integer, nullable=False, default=18)
+    questions = db.relationship('Question', backref='quiz', lazy=True, cascade="all, delete-orphan")
+    attempts = db.relationship('QuizAttempt', backref='quiz', lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"Quiz('{self.title}')"
+
+class Question(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    question_text = db.Column(db.String(500), nullable=False)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+    options = db.relationship('Option', backref='question', lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"Question('{self.question_text[:30]}...')"
+
+class Option(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    option_text = db.Column(db.String(200), nullable=False)
+    is_correct = db.Column(db.Boolean, nullable=False, default=False)
+    question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=False)
+
+    def __repr__(self):
+        return f"Option('{self.option_text}', Correct: {self.is_correct})"
+
+class QuizAttempt(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    score = db.Column(db.Integer, nullable=False)
+    passed = db.Column(db.Boolean, nullable=False)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+
+    def __repr__(self):
+        return f"Attempt(User: {self.user_id}, Quiz: {self.quiz_id}, Score: {self.score})"
+
+class Lab(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    filename = db.Column(db.String(100), unique=True, nullable=False)
+    # Relationships
+    steps = db.relationship('LabStep', backref='lab', lazy=True, cascade="all, delete-orphan")
+    progress_records = db.relationship('LabProgress', backref='in_progress_lab', lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"Lab('{self.title}')"
+
+class LabStep(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    step_number = db.Column(db.Integer, nullable=False)
+    description_text = db.Column(db.Text, nullable=False)
+    type_text = db.Column(db.String(500), nullable=False)
+    match_text = db.Column(db.String(500), nullable=False)
+    # Foreign Key to Lab
+    lab_id = db.Column(db.Integer, db.ForeignKey('lab.id'), nullable=False)
+
+    def __repr__(self):
+        return f"LabStep({self.step_number} for Lab ID: {self.lab_id})"
+
+class LabProgress(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    current_step_number = db.Column(db.Integer, nullable=False, default=1)
+    last_updated = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    # Foreign Keys
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    lab_id = db.Column(db.Integer, db.ForeignKey('lab.id'), nullable=False)
+    # A user can only have one progress entry per lab
+    __table_args__ = (db.UniqueConstraint('user_id', 'lab_id', name='uq_user_lab_progress'),)
+
+    def __repr__(self):
+        return f"LabProgress(User: {self.user_id}, Lab: {self.lab_id}, Step: {self.current_step_number})"
+
+class PracticalSession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    filename = db.Column(db.String(100), unique=True, nullable=False)
+    
+    # Relationship
+    requirements = db.relationship('Requirement', back_populates='session', lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"PracticalSession('{self.title}')"
+
+class Requirement(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    description = db.Column(db.Text, nullable=False)
+    check_type = db.Column(db.String(50), nullable=False)
+    selector = db.Column(db.String(200), nullable=True) # Nullable as some checks might not need it
+    attribute_name = db.Column(db.String(50), nullable=True)
+    value = db.Column(db.String(500), nullable=True)
+    
+    # Foreign Key
+    session_id = db.Column(db.Integer, db.ForeignKey('practical_session.id'), nullable=False)
+    
+    # Relationship
+    session = db.relationship('PracticalSession', back_populates='requirements')
+
+    def __repr__(self):
+        return f"Requirement('{self.check_type}' for Session ID: {self.session_id})"
+
+# --- NOW, GO BACK AND UPDATE THE USER MODEL ---
+
+class User(db.Model, UserMixin):
+    # ... (existing columns id, username, email, etc.) ...
+    attempts = db.relationship('QuizAttempt', backref='user', lazy=True)
+    # --- ADD THIS NEW RELATIONSHIP ---
+    lab_progress = db.relationship('LabProgress', backref='user', lazy=True, cascade="all, delete-orphan")
+
+    # ... (__repr__ function) ...
+
+# ===================================
+# 3. FORMS
+# ===================================
+# ... rest of your file
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+
+# ===================================
+# 3. FORMS
+# ===================================
+
+class RegistrationForm(FlaskForm):
+    username = StringField('Username', 
+                           validators=[DataRequired(), Length(min=2, max=20)])
+    email = StringField('Email', 
+                        validators=[DataRequired(), Email()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    confirm_password = PasswordField('Confirm Password', 
+                                     validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('Sign Up')
+
+    def validate_username(self, username):
+        user = User.query.filter_by(username=username.data).first()
+        if user:
+            raise ValidationError('That username is taken. Please choose a different one.')
+
+    def validate_email(self, email):
+        user = User.query.filter_by(email=email.data).first()
+        if user:
+            raise ValidationError('That email is already in use. Please choose a different one.')
+
+class LoginForm(FlaskForm):
+    email = StringField('Email', 
+                        validators=[DataRequired(), Email()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    remember = BooleanField('Remember Me')
+    submit = SubmitField('Login')
+
+
+# ===================================
+# 4. ROUTES
+# ===================================
+@app.route("/")
+def index():
+    # --- NEW: Check if the user is already logged in ---
+    if current_user.is_authenticated:
+        # Redirect to the appropriate dashboard based on role
+        if current_user.role == 'admin':
+            return redirect(url_for('admin_dashboard'))
+        else:
+            return redirect(url_for('dashboard'))
+    
+    # If not logged in, show the regular landing page
+    return render_template('index.html')
+
+# ... (rest of your routes) ...
+
+@app.route("/signup", methods=['GET', 'POST'])
+def signup():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    form = RegistrationForm()
+    if form.validate_on_submit():
+        hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
+        user = User(username=form.username.data, email=form.email.data, password_hash=hashed_password)
+        db.session.add(user)
+        db.session.commit()
+        flash('Your account has been created! You are now able to log in.', 'success')
+        return redirect(url_for('login'))
+    return render_template('signup.html', form=form)
+
+@app.route("/login", methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    form = LoginForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(email=form.email.data).first()
+        if user and bcrypt.check_password_hash(user.password_hash, form.password.data):
+            login_user(user, remember=form.remember.data)
+            if user.role == 'admin':
+                return redirect(url_for('admin_dashboard'))
+            else:
+                return redirect(url_for('dashboard'))
+        else:
+            flash('Login Unsuccessful. Please check email and password.', 'danger')
+    return render_template('login.html', form=form)
+
+@app.route("/logout")
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
+# app.py
+
+@app.route("/quizzes")
+@login_required
+def quizzes_page():
+    quizzes = Quiz.query.order_by(Quiz.id.asc()).all()
+    
+    # --- NEW LOGIC TO CHECK QUIZ STATUSES ---
+    quiz_statuses = {}
+    # Get all attempts for the current user
+    attempts = QuizAttempt.query.filter_by(user_id=current_user.id).order_by(QuizAttempt.timestamp.desc()).all()
+    
+    # Use a dictionary to keep track of the latest status for each quiz
+    latest_attempts = {attempt.quiz_id: attempt for attempt in reversed(attempts)}
+
+    for quiz in quizzes:
+        # Check if user has passed this quiz at any point
+        has_passed = any(a.quiz_id == quiz.id and a.passed for a in attempts)
+        if has_passed:
+            quiz_statuses[quiz.id] = {'status': 'completed'}
+        # If not passed, check the latest attempt for a lockout
+        elif quiz.id in latest_attempts:
+            latest_attempt = latest_attempts[quiz.id]
+            if not latest_attempt.passed:
+                time_since_attempt = datetime.datetime.utcnow() - latest_attempt.timestamp
+                if time_since_attempt.total_seconds() < 60: # 1 minute lockout
+                    unlock_time = (latest_attempt.timestamp + datetime.timedelta(seconds=60)).isoformat() + "Z"
+                    quiz_statuses[quiz.id] = {'status': 'locked', 'unlock_time': unlock_time}
+
+    return render_template('quiz_list.html', quizzes=quizzes, statuses=quiz_statuses)
+
+# --- END OF NEW ROUTE ---
+
+# app.py
+
+@app.route("/api/quizzes")
+@login_required
+def quiz_list_api():
+    print("DEBUG: /api/quizzes endpoint was hit!") # <-- Add this line
+    try:
+        quizzes = Quiz.query.order_by(Quiz.id.asc()).all()
+        quiz_data = []
+        
+        attempts = QuizAttempt.query.filter_by(user_id=current_user.id).order_by(QuizAttempt.timestamp.desc()).all()
+        
+        latest_attempts = {}
+        for attempt in attempts:
+            if attempt.quiz_id not in latest_attempts:
+                latest_attempts[attempt.quiz_id] = attempt
+                
+        passed_quiz_ids = {a.quiz_id for a in attempts if a.passed}
+
+        for quiz in quizzes:
+            status = 'available'
+            unlock_time = None
+            
+            if quiz.id in passed_quiz_ids:
+                status = 'completed'
+            elif quiz.id in latest_attempts:
+                latest_attempt = latest_attempts[quiz.id]
+                if not latest_attempt.passed:
+                    time_since_attempt = datetime.datetime.utcnow() - latest_attempt.timestamp
+                    if time_since_attempt.total_seconds() < 60:
+                        status = 'locked'
+                        unlock_time = (latest_attempt.timestamp + datetime.timedelta(seconds=60)).isoformat() + "Z"
+
+            quiz_data.append({
+                'id': quiz.id,
+                'title': quiz.title,
+                'question_count': len(quiz.questions),
+                'passing_score': quiz.passing_score,
+                'status': status,
+                'unlock_time': unlock_time
+            })
+            
+        return jsonify(quiz_data)
+    except Exception as e:
+        print(f"ERROR in quiz_list_api: {e}") # <-- Add this for error logging
+        return jsonify({'error': 'An internal error occurred'}), 500
+
+@app.route("/labs")
+@login_required
+def lab_list():
+    labs = Lab.query.order_by(Lab.id.asc()).all()
+    # We can add progress tracking here later
+    return render_template('lab_list.html', labs=labs)
+
+# ===================================
+# 3.8 CONTEXT PROCESSOR
+# ===================================
+@app.context_processor
+def inject_now():
+    """Injects the 'now' variable (current time) into all templates."""
+    return {'now': datetime.datetime.utcnow()}
+
+# app.py
+
+# ... (in the ROUTES section, after lab_list) ...
+
+# 1. "Start Lab" Route - Redirects to the correct step
+@app.route("/lab/<int:lab_id>/start")
+@login_required
+def start_lab(lab_id):
+    lab = Lab.query.get_or_404(lab_id)
+    
+    # Find user's progress, or create it if it doesn't exist
+    progress = LabProgress.query.filter_by(user_id=current_user.id, lab_id=lab.id).first()
+    if not progress:
+        progress = LabProgress(user_id=current_user.id, lab_id=lab.id, current_step_number=1)
+        db.session.add(progress)
+        db.session.commit()
+        
+    return redirect(url_for('lab_step_viewer', lab_id=lab.id, step_number=progress.current_step_number))
+# app.py
+# app.py -> ROUTES section
+
+# This is the old lab_step_viewer. We will remove the completion logic from it.
+@app.route("/lab/<int:lab_id>/step/<int:step_number>")
+@login_required
+def lab_step_viewer(lab_id, step_number):
+    lab = Lab.query.get_or_404(lab_id)
+    step = LabStep.query.filter_by(lab_id=lab.id, step_number=step_number).first_or_404()
+    total_steps = len(lab.steps)
+    return render_template('lab_viewer.html', lab=lab, step=step, total_steps=total_steps)
+
+# app.py -> ROUTES section
+
+@app.route("/lab/<int:lab_id>/complete")
+@login_required
+def lab_complete(lab_id):
+    lab = Lab.query.get_or_404(lab_id)
+    
+    # --- NEW AND IMPROVED LOGIC ---
+    progress = LabProgress.query.filter_by(user_id=current_user.id, lab_id=lab.id).first()
+    
+    # If progress exists, reset it to step 1 for the next time.
+    if progress:
+        progress.current_step_number = 1
+        db.session.commit()
+    # --- END OF NEW LOGIC ---
+        
+    # Render the completion page as before.
+    return render_template('lab_complete.html', lab=lab)
+    
+# ===================================
+# 4. ROUTES
+# ===================================
+# ... your routes start here ...
+# app.py
+
+# --- Add this new import at the top of the file ---
+from flask import jsonify # We'll need this for our API later
+import json # To serialize data for the frontend
+# app.py
+
+@app.route("/quiz/<int:quiz_id>")
+@login_required
+def quiz_viewer(quiz_id):
+    # This route is now simpler. We just fetch the quiz object.
+    # The relationships in our models will allow Jinja to access questions and options.
+    quiz = Quiz.query.get_or_404(quiz_id)
+    
+    # We still need the questions with answers for the review part later.
+    questions_for_review = []
+    for q in quiz.questions:
+        options = [{'id': opt.id, 'text': opt.option_text, 'is_correct': opt.is_correct} for opt in q.options]
+        questions_for_review.append({'id': q.id, 'text': q.question_text, 'options': options})
+    questions_with_answers_json = json.dumps(questions_for_review)
+
+    return render_template(
+        'quiz_viewer.html', 
+        quiz=quiz,
+        questions_with_answers_json=questions_with_answers_json
+    )
+
+# app.py
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    # This route is for non-admin users. If an admin lands here, send them to their own dashboard.
+    if current_user.role == 'admin':
+        return redirect(url_for('admin_dashboard'))
+
+    # Calculate user statistics for their quiz performance
+    attempts = QuizAttempt.query.filter_by(user_id=current_user.id).all()
+    
+    # Calculate stats based on UNIQUE quizzes the user has interacted with
+    quizzes_taken = len(set(a.quiz_id for a in attempts))
+    quizzes_passed = len(set(a.quiz_id for a in attempts if a.passed))
+    
+    pass_rate = 0
+    # Avoid division by zero for new users
+    if quizzes_taken > 0:
+        pass_rate = round((quizzes_passed / quizzes_taken) * 100)
+        
+    # Get the 3 most recent attempts for the activity feed
+    recent_attempts = QuizAttempt.query.filter_by(user_id=current_user.id).order_by(QuizAttempt.timestamp.desc()).limit(3).all()
+
+    stats = {
+        'quizzes_taken': quizzes_taken,
+        'quizzes_passed': quizzes_passed,
+        'pass_rate': pass_rate,
+        'recent_attempts': recent_attempts
+    }
+    
+    return render_template('dashboard.html', stats=stats)    
+    
+@app.route("/admin")
+@login_required
+def admin_dashboard():
+    if current_user.role != 'admin':
+        flash('You do not have permission to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    # Calculate system-wide stats
+    total_users = User.query.count()
+    total_quizzes = Quiz.query.count()
+    total_labs = Lab.query.count() # New
+    total_sessions = PracticalSession.query.count() # New
+    
+    recent_attempts = QuizAttempt.query.order_by(QuizAttempt.timestamp.desc()).limit(10).all()
+
+    stats = {
+        'total_users': total_users,
+        'total_quizzes': total_quizzes,
+        'total_labs': total_labs, # New
+        'total_sessions': total_sessions, # New
+        'recent_attempts': recent_attempts
+    }
+
+    return render_template('admin_dashboard.html', stats=stats)
+# app.py
+
+# Make sure this is defined at the top of your file
+QUIZ_CATEGORIES = {
+    'quiz': {'name': 'Quiz', 'questions': 4},
+    'test': {'name': 'Test', 'questions': 15},
+    'exam': {'name': 'Exam', 'questions': 50}
+}
+
+# app.py
+
+@app.route("/admin/quizzes", methods=['GET', 'POST'])
+@login_required
+def admin_quizzes():
+    if current_user.role != 'admin':
+        flash('You do not have permission to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        category = request.form.get('category')
+        
+        # --- CORRECTED VALIDATION LOGIC ---
+        
+        # 1. Check if the file part exists in the request
+        if 'quiz_file' not in request.files:
+            flash('No file part in the request. This is likely a form error.', 'danger')
+            return redirect(request.url)
+        
+        # 2. Now that we know it exists, get the file object
+        file = request.files['quiz_file']
+        
+        # 3. Check if the user submitted an empty file part (no filename)
+        if file.filename == '':
+            flash('No file selected. Please choose a file to upload.', 'danger')
+            return redirect(request.url)
+
+        # --- END OF CORRECTION ---
+
+        if not category or category not in QUIZ_CATEGORIES:
+            flash('Invalid category selected.', 'danger')
+            return redirect(request.url)
+        
+        if file and file.filename.endswith('.md'):
+            filename = file.filename
+            
+            if Quiz.query.filter_by(filename=filename).first():
+                flash(f"A quiz with the filename '{filename}' already exists.", 'danger')
+                return redirect(request.url)
+
+            markdown_text = file.stream.read().decode("utf-8")
+            parsed_data = parse_quiz_markdown(markdown_text)
+
+            if parsed_data is None:
+                flash('Failed to parse the markdown file. Please check its format.', 'danger')
+                return redirect(request.url)
+
+            expected_count = QUIZ_CATEGORIES[category]['questions']
+            actual_count = len(parsed_data)
+            if actual_count != expected_count:
+                flash(f"Validation Error: The selected category '{QUIZ_CATEGORIES[category]['name']}' requires exactly {expected_count} questions, but the file contained {actual_count}.", 'danger')
+                return redirect(request.url)
+            
+            try:
+                quiz_title = os.path.splitext(filename)[0].replace('_', ' ').title()
+                new_quiz = Quiz(title=quiz_title, filename=filename, category=QUIZ_CATEGORIES[category]['name'])
+                db.session.add(new_quiz)
+                
+                for q_data in parsed_data:
+                    new_question = Question(question_text=q_data['question_text'], quiz=new_quiz)
+                    db.session.add(new_question)
+                    for i, opt_text in enumerate(q_data['options']):
+                        is_correct = (i == q_data['correct_index'])
+                        new_option = Option(option_text=opt_text, is_correct=is_correct, question=new_question)
+                        db.session.add(new_option)
+                
+                db.session.commit()
+                flash(f"Successfully uploaded and created '{quiz_title}'.", 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f"A database error occurred: {e}", "danger")
+
+            return redirect(url_for('admin_quizzes'))
+        else:
+            flash('Invalid file type. Please upload a .md file.', 'danger')
+            return redirect(request.url)
+
+    # Logic for GET request
+    quizzes = Quiz.query.order_by(Quiz.id.desc()).all()
+    return render_template('admin_quizzes.html', quizzes=quizzes, categories=QUIZ_CATEGORIES)
+    
+# app.py
+
+@app.route("/admin/labs", methods=['GET', 'POST'])
+@login_required
+def admin_labs():
+    if current_user.role != 'admin':
+        flash('You do not have permission to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    # --- NEW: LOGIC TO HANDLE FILE UPLOAD ---
+    if request.method == 'POST':
+        if 'lab_file' not in request.files:
+            flash('No file part in the request.', 'danger')
+            return redirect(request.url)
+        
+        file = request.files['lab_file']
+        
+        if file.filename == '':
+            flash('No file selected.', 'danger')
+            return redirect(request.url)
+
+        if file and file.filename.endswith('.md'):
+            filename = file.filename
+            
+            # Check for duplicate filename
+            if Lab.query.filter_by(filename=filename).first():
+                flash(f"A lab with the filename '{filename}' already exists.", 'danger')
+                return redirect(request.url)
+
+            # Read and parse the file with our strict parser
+            markdown_text = file.stream.read().decode("utf-8")
+            parsed_data, error_message = parse_lab_markdown(markdown_text)
+
+            # If the parser returns an error, flash it to the admin
+            if error_message:
+                flash(f"Upload Failed: {error_message}", 'danger')
+                return redirect(request.url)
+            
+            # If parsing succeeds, add to the database
+            try:
+                lab_title = os.path.splitext(filename)[0].replace('_', ' ').title()
+                new_lab = Lab(title=lab_title, filename=filename)
+                db.session.add(new_lab)
+                
+                for step_data in parsed_data:
+                    new_step = LabStep(
+                        step_number=step_data['step_number'],
+                        description_text=step_data['description_text'],
+                        type_text=step_data['type_text'],
+                        match_text=step_data['match_text'],
+                        lab=new_lab
+                    )
+                    db.session.add(new_step)
+                
+                db.session.commit()
+                flash(f"Successfully uploaded and created Lab: '{lab_title}'.", 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f"A database error occurred: {e}", "danger")
+
+            return redirect(url_for('admin_labs'))
+        else:
+            flash('Invalid file type. Please upload a .md file.', 'danger')
+            return redirect(request.url)
+
+    # --- EXISTING LOGIC FOR GET REQUEST ---
+    labs = Lab.query.order_by(Lab.id.desc()).all()
+    return render_template('admin_labs.html', labs=labs)    
+    
+# app.py -> ROUTES section
+
+@app.route("/admin/sessions", methods=['GET', 'POST'])
+@login_required
+def admin_sessions():
+    if current_user.role != 'admin':
+        flash('You do not have permission to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        if 'session_file' not in request.files:
+            flash('No file part in the request.', 'danger')
+            return redirect(request.url)
+        
+        file = request.files['session_file']
+        if file.filename == '':
+            flash('No file selected.', 'danger')
+            return redirect(request.url)
+
+        if file and file.filename.endswith('.yml'):
+            filename = file.filename
+            if PracticalSession.query.filter_by(filename=filename).first():
+                flash(f"A session with the filename '{filename}' already exists.", 'danger')
+                return redirect(request.url)
+
+            yaml_text = file.stream.read().decode("utf-8")
+            parsed_data, error_message = parse_session_yaml(yaml_text)
+
+            if error_message:
+                flash(f"Upload Failed: {error_message}", 'danger')
+                return redirect(request.url)
+
+            try:
+                # Create the parent PracticalSession
+                new_session = PracticalSession(title=parsed_data['title'], filename=filename)
+                db.session.add(new_session)
+                
+                # Create all the Requirement objects
+                for req_data in parsed_data['requirements']:
+                    new_req = Requirement(
+                        description=req_data['description'],
+                        check_type=req_data['check_type'],
+                        selector=req_data.get('selector'),
+                        attribute_name=req_data.get('attribute_name'),
+                        value=req_data.get('value'),
+                        session=new_session
+                    )
+                    db.session.add(new_req)
+                
+                db.session.commit()
+                flash(f"Successfully uploaded and created Session: '{parsed_data['title']}'.", 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f"A database error occurred: {e}", "danger")
+
+            return redirect(url_for('admin_sessions'))
+        else:
+            flash('Invalid file type. Please upload a .yml file.', 'danger')
+            return redirect(request.url)
+
+    # Logic for GET request
+    sessions = PracticalSession.query.order_by(PracticalSession.id.desc()).all()
+    return render_template('admin_sessions.html', sessions=sessions)    
+
+# ===================================
+# 5. CUSTOM CLI COMMANDS
+# ===================================
+
+@app.cli.command("create-admin")
+def create_admin():
+    """Creates the admin user."""
+    print("Creating admin user...")
+    try:
+        if User.query.filter_by(username='admin').first():
+            print("Admin user already exists.")
+            return
+        hashed_password = bcrypt.generate_password_hash('123456').decode('utf-8')
+        admin_user = User(username='admin', email='admin@example.com', password_hash=hashed_password, role='admin')
+        db.session.add(admin_user)
+        db.session.commit()
+        print("Admin user created successfully.")
+    except Exception as e:
+        print("Error creating admin user:", str(e))
+        db.session.rollback()
+
+# app.py
+
+# ===================================
+# 5. CUSTOM CLI COMMANDS
+# ===================================
+
+@app.cli.command("create-admin")
+# ... (your existing create-admin function) ...
+
+
+# --- ADD THE NEW COMMAND BELOW ---
+
+@app.cli.command("process-quiz")
+@click.argument("filepath")
+def process_quiz(filepath):
+    """Processes a markdown quiz file and adds it to the database."""
+    print(f"Attempting to process quiz file: {filepath}")
+
+    # 1. Read the file
+    try:
+        with open(filepath, 'r') as f:
+            content = f.read()
+    except FileNotFoundError:
+        print(f"Error: File not found at '{filepath}'")
+        return
+
+    # 2. Parse the content
+    parsed_data = parse_quiz_markdown(content)
+    if not parsed_data:
+        print("Error: Parsing failed. Please check the file format. Aborting.")
+        return
+
+    # 3. Add to database
+    filename = os.path.basename(filepath)
+    quiz_title = os.path.splitext(filename)[0].replace('_', ' ').title()
+
+    # Check if a quiz with this filename already exists
+    if Quiz.query.filter_by(filename=filename).first():
+        print(f"Error: A quiz with filename '{filename}' already exists. Aborting.")
+        return
+    
+    try:
+        # Create the parent Quiz object
+        new_quiz = Quiz(title=quiz_title, filename=filename, passing_score=18)
+        db.session.add(new_quiz)
+
+        # Create all associated Question and Option objects
+        for q_data in parsed_data:
+            new_question = Question(question_text=q_data['question_text'], quiz=new_quiz)
+            db.session.add(new_question)
+            
+            for i, opt_text in enumerate(q_data['options']):
+                is_correct = (i == q_data['correct_index'])
+                new_option = Option(option_text=opt_text, is_correct=is_correct, question=new_question)
+                db.session.add(new_option)
+        
+        # Commit the entire transaction
+        db.session.commit()
+        print(f"Success! Quiz '{quiz_title}' with {len(parsed_data)} questions has been added to the database.")
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"A database error occurred: {e}")
+        print("Transaction has been rolled back. No changes were saved.")
+
+QUIZ_CATEGORIES = {
+    'quiz': {'name': 'Quiz', 'questions': 4},
+    'test': {'name': 'Test', 'questions': 15},
+    'exam': {'name': 'Exam', 'questions': 50}
+}
+
+# ===================================
+# 6. CUSTOM CLI COMMANDS
+# ===================================
+
+# ... (your existing create-admin and process-quiz commands) ...
+
+# --- ADD THE NEW LAB COMMAND BELOW ---
+
+@app.cli.command("process-lab")
+@click.argument("filepath")
+def process_lab(filepath):
+    """Processes a markdown lab file and adds it to the database."""
+    print(f"--> Attempting to process lab file: {filepath}")
+
+    # 1. Read the file content
+    try:
+        with open(filepath, 'r') as f:
+            content = f.read()
+    except FileNotFoundError:
+        print(f"Error: File not found at '{filepath}'")
+        return
+
+    # 2. Parse the content using our strict, whitespace-aware parser
+    parsed_data, error_message = parse_lab_markdown(content)
+    
+    # Check if the parser returned an error
+    if error_message:
+        print(f"VALIDATION FAILED: {error_message}")
+        print("Aborting. No changes were made to the database.")
+        return
+
+    # If we get here, parsing was successful.
+    print(f"--> Validation successful. Found {len(parsed_data)} steps.")
+    
+    # 3. Prepare to add to the database
+    filename = os.path.basename(filepath)
+    lab_title = os.path.splitext(filename)[0].replace('_', ' ').title()
+
+    # Check for duplicate filename to prevent errors
+    if Lab.query.filter_by(filename=filename).first():
+        print(f"Error: A lab with the filename '{filename}' already exists. Aborting.")
+        return
+    
+    try:
+        # Create the parent Lab object
+        new_lab = Lab(title=lab_title, filename=filename)
+        db.session.add(new_lab)
+        print(f"--> Creating Lab: '{lab_title}'")
+
+        # Loop through the parsed data and create all associated LabStep objects
+        for step_data in parsed_data:
+            new_step = LabStep(
+                step_number=step_data['step_number'],
+                description_text=step_data['description_text'],
+                type_text=step_data['type_text'],
+                match_text=step_data['match_text'],
+                lab=new_lab  # Associate this step with the parent lab
+            )
+            db.session.add(new_step)
+        
+        # Commit the entire transaction to the database
+        db.session.commit()
+        print(f"SUCCESS! Lab '{lab_title}' has been added to the database.")
+
+    except Exception as e:
+        # If any database error occurs, roll back all changes
+        db.session.rollback()
+        print(f"DATABASE ERROR: {e}")
+        print("Transaction has been rolled back. No changes were saved.")
+
+# ===================================
+# 6. APP EXECUTION
+# ===================================
+
+if __name__ == '__main__':
+    app.run(debug=True)

@@ -1,0 +1,87 @@
+<!-- templates/admin_quizzes.html -->
+{% extends "base.html" %}
+
+{% block title %}Admin: Quiz Management{% endblock %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>Quiz Management</h1>
+    </div>
+
+    <!-- This section is crucial for displaying success or error messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- THIS IS THE UPLOAD INTERFACE -->
+    <div class="card mb-4">
+        <div class="card-header">
+            Create New Quiz from Markdown
+        </div>
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label for="category" class="form-label">Category</label>
+                        <select class="form-select" id="category" name="category" required>
+                            <option selected disabled value="">Choose...</option>
+                            {% for key, value in categories.items() %}
+                                <option value="{{ key }}">{{ value.name }} ({{ value.questions }} questions)</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <label for="quiz_file" class="form-label">Markdown File (.md)</label>
+                        <input class="form-control" type="file" id="quiz_file" name="quiz_file" accept=".md" required>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">Upload & Create</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- END OF UPLOAD INTERFACE -->
+
+    <!-- The table of existing quizzes -->
+    <h4>Existing Quizzes</h4>
+    {% if quizzes %}
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">ID</th>
+                            <th scope="col">Title</th>
+                            <th scope="col">Category</th>
+                            <th scope="col">Filename</th>
+                            <th scope="col">Questions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for quiz in quizzes %}
+                        <tr>
+                            <th scope="row">{{ quiz.id }}</th>
+                            <td>{{ quiz.title }}</td>
+                            <td><span class="badge bg-secondary">{{ quiz.category }}</span></td>
+                            <td>{{ quiz.filename }}</td>
+                            <td>{{ quiz.questions|length }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-warning" role="alert">
+            No quizzes have been created yet.
+        </div>
+    {% endif %}
+{% endblock %}

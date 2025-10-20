@@ -1,0 +1,15 @@
+<!-- templates/index.html -->
+{% extends "base.html" %}
+
+{% block title %}Welcome!{% endblock %}
+
+{% block content %}
+<div class="p-5 mb-4 bg-light rounded-3">
+    <div class="container-fluid py-5">
+      <h1 class="display-5 fw-bold">Welcome to Your New Web Application</h1>
+      <p class="col-md-8 fs-4">This is the landing page. From here you can log in to your account or sign up to create a new one.</p>
+      <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg" type="button">Login</a>
+      <a href="{{ url_for('signup') }}" class="btn btn-success btn-lg" type="button">Sign Up</a>
+    </div>
+</div>
+{% endblock %}

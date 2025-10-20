@@ -1,0 +1,150 @@
+<!-- templates/admin_dashboard.html (Corrected) -->
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- 1. Navigation Sidebar (WITH CORRECTED LINKS) -->
+        <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
+            <div class="position-sticky pt-3">
+                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
+                    <span>Management</span>
+                </h6>
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="{{ url_for('admin_dashboard') }}">
+                            <i class="bi bi-house-door-fill me-2"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_quizzes') }}">
+                            <i class="bi bi-patch-question-fill me-2"></i>Quiz Management
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_labs') }}">
+                            <i class="bi bi-terminal-fill me-2"></i>Lab Management
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_sessions') }}">
+                            <i class="bi bi-code-square me-2"></i>Session Management
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-muted" href="#">
+                            <i class="bi bi-people-fill me-2"></i>User Management (soon)
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                <h1 class="h2">Admin Dashboard</h1>
+            </div>
+
+            <!-- "At a Glance" Stats -->
+            <div class="row g-4 mb-4">
+                <div class="col-lg-6 col-xl-3">
+                    <div class="card text-white bg-primary">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Users</h5>
+                            <p class="card-text fs-2 fw-bold">{{ stats.total_users }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 col-xl-3">
+                    <div class="card text-white bg-info">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Quizzes</h5>
+                            <p class="card-text fs-2 fw-bold">{{ stats.total_quizzes }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 col-xl-3">
+                    <div class="card text-white bg-success">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Labs</h5>
+                            <p class="card-text fs-2 fw-bold">{{ stats.total_labs }}</p>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col-lg-6 col-xl-3">
+                    <div class="card text-white bg-warning text-dark">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Sessions</h5>
+                            <p class="card-text fs-2 fw-bold">{{ stats.total_sessions }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row g-4">
+                <!-- Content Breakdown Card -->
+                <div class="col-xl-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Content Breakdown</h5>
+                        </div>
+                        <div class="card-body">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Quizzes
+                                    <span class="badge bg-info rounded-pill">{{ stats.total_quizzes }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Labs
+                                    <span class="badge bg-success rounded-pill">{{ stats.total_labs }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Practical Sessions
+                                    <span class="badge bg-warning text-dark rounded-pill">{{ stats.total_sessions }}</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <!-- Recent Activity Table -->
+                <div class="col-xl-8">
+                     <h2 class="h4">Recent Quiz Activity</h2>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-sm">
+                            <thead>
+                                <tr>
+                                    <th scope="col">User</th>
+                                    <th scope="col">Quiz</th>
+                                    <th scope="col">Score</th>
+                                    <th scope="col">Result</th>
+                                    <th scope="col">Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for attempt in stats.recent_attempts %}
+                                <tr>
+                                    <td>{{ attempt.user.username }}</td>
+                                    <td>{{ attempt.quiz.title }}</td>
+                                    <td>{{ attempt.score }}</td>
+                                    <td>
+                                        {% if attempt.passed %}
+                                            <span class="badge bg-success">Passed</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ attempt.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}
