@@ -447,8 +447,6 @@ def process_quiz(filepath):
 # 2. DATABASE MODELS
 # ===================================
 
-# app.py -> In the DATABASE MODELS section (Find your User model)
-
 class User(db.Model, UserMixin):
     __tablename__ = 'user'
     id = db.Column(db.Integer, primary_key=True)
@@ -456,87 +454,12 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(60), nullable=False)
     role = db.Column(db.String(10), nullable=False, default='user')
-    
-    # --- ADD THIS COLUMN FOR MODULE LOCKING ---
-    current_module_order = db.Column(db.Integer, nullable=False, default=1)
-    
-    # --- Relationships ---
+    # --- ADD THIS RELATIONSHIP ---
     attempts = db.relationship('QuizAttempt', backref='attempting_user', lazy=True)
     lab_progress = db.relationship('LabProgress', backref='progressing_user', lazy=True, cascade="all, delete-orphan")
-    
-    # --- ADD THIS RELATIONSHIP FOR COURSE PROGRESS ---
-    progress_records = db.relationship('UserProgress', backref='user', lazy=True, cascade="all, delete-orphan")
-
 
     def __repr__(self):
         return f"User('{self.username}', '{self.email}', '{self.role}')"
-
-# app.py -> In the DATABASE MODELS section
-# ===================================
-# COURSE STRUCTURE MODELS
-# ===================================
-
-class Module(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(150), nullable=False)
-    order = db.Column(db.Integer, nullable=False, unique=True)
-    is_published = db.Column(db.Boolean, nullable=False, default=False)
-    
-    # Relationship to Submodules
-    submodules = db.relationship('Submodule', back_populates='module', lazy='dynamic', cascade="all, delete-orphan", order_by='Submodule.order')
-
-    def __repr__(self):
-        return f"Module('{self.title}', Order: {self.order})"
-
-class Submodule(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(150), nullable=False)
-    order = db.Column(db.Integer, nullable=False)
-    
-    # Foreign Key to Module
-    module_id = db.Column(db.Integer, db.ForeignKey('module.id'), nullable=False)
-    
-    # Relationships
-    module = db.relationship('Module', back_populates='submodules')
-    items = db.relationship('ModuleItem', back_populates='submodule', lazy='dynamic', cascade="all, delete-orphan", order_by='ModuleItem.order')
-
-    def __repr__(self):
-        return f"Submodule('{self.title}', Order: {self.order})"
-
-class ModuleItem(db.Model):
-    __tablename__ = 'module_item'
-    id = db.Column(db.Integer, primary_key=True)
-    order = db.Column(db.Integer, nullable=False)
-    
-    # Foreign Key to Submodule
-    submodule_id = db.Column(db.Integer, db.ForeignKey('submodule.id'), nullable=False)
-    
-    # Polymorphic Content Fields
-    content_type = db.Column(db.String(50), nullable=False)  # 'quiz', 'lab', 'session'
-    content_id = db.Column(db.Integer, nullable=False)
-    
-    # Relationships
-    submodule = db.relationship('Submodule', back_populates='items')
-    user_progress = db.relationship('UserProgress', backref='module_item', lazy=True, cascade="all, delete-orphan")
-    
-    def __repr__(self):
-        return f"ModuleItem(Type: '{self.content_type}', ID: {self.content_id})"
-
-class UserProgress(db.Model):
-    __tablename__ = 'user_progress'
-    id = db.Column(db.Integer, primary_key=True)
-    status = db.Column(db.String(20), nullable=False, default='not_started') # e.g., 'not_started', 'completed'
-    last_updated = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-    
-    # Foreign Keys
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    module_item_id = db.Column(db.Integer, db.ForeignKey('module_item.id'), nullable=False)
-    
-    # A user can only have one progress entry per module item
-    __table_args__ = (db.UniqueConstraint('user_id', 'module_item_id', name='uq_user_module_item_progress'),)
-
-    def __repr__(self):
-        return f"UserProgress(User: {self.user_id}, Item: {self.module_item_id}, Status: '{self.status}')"
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -648,6 +571,16 @@ class Requirement(db.Model):
 
     def __repr__(self):
         return f"Requirement('{self.check_type}' for Session ID: {self.session_id})"
+
+# --- NOW, GO BACK AND UPDATE THE USER MODEL ---
+
+class User(db.Model, UserMixin):
+    # ... (existing columns id, username, email, etc.) ...
+    attempts = db.relationship('QuizAttempt', backref='user', lazy=True)
+    # --- ADD THIS NEW RELATIONSHIP ---
+    lab_progress = db.relationship('LabProgress', backref='user', lazy=True, cascade="all, delete-orphan")
+
+    # ... (__repr__ function) ...
 
 # ===================================
 # 3. FORMS

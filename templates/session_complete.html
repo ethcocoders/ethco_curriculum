@@ -1,0 +1,50 @@
+<!-- templates/session_complete.html -->
+{% extends "base.html" %}
+
+{% block title %}Session Complete!{% endblock %}
+
+{% block content %}
+<div class="container text-center">
+    <h1 class="display-4">Congratulations!</h1>
+    <p class="lead">You have successfully completed the session: <strong>{{ session.title }}</strong></p>
+    <p>Well done!</p>
+    <a href="{{ url_for('session_list') }}" class="btn btn-primary">Back to Sessions</a>
+</div>
+
+<canvas id="confetti-canvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;"></canvas>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1/dist/confetti.browser.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const confettiCanvas = document.getElementById('confetti-canvas');
+        const myConfetti = confetti.create(confettiCanvas, {
+            resize: true,
+            useWorker: true
+        });
+
+        // Function to launch confetti
+        function launchConfetti() {
+            myConfetti({
+                particleCount: 150,
+                spread: 180,
+                origin: { y: 0.6 }
+            });
+        }
+
+        // Launch confetti on page load
+        launchConfetti();
+
+        // Optional: Launch confetti every few seconds for a bit
+        const interval = setInterval(() => {
+            launchConfetti();
+        }, 2000);
+
+        // Stop after 6 seconds
+        setTimeout(() => {
+            clearInterval(interval);
+        }, 6000);
+    });
+</script>
+{% endblock %}

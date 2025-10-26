@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function updateChecklist(results) {
+        let allCorrect = true;
         results.forEach((isCorrect, index) => {
             const icon = statusIcons[index];
             if (icon) {
@@ -58,8 +59,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     icon.classList.add('bi-x-circle-fill');
                     icon.style.color = 'red';
+                    allCorrect = false;
                 }
             }
         });
+
+        if (allCorrect) {
+            // Redirect to the completion page
+            window.location.href = `/session/${sessionId}/complete`;
+        }
     }
 });
