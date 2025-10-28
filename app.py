@@ -24,7 +24,7 @@ app = Flask(__name__)
 
 # Configuration
 app.config['SECRET_KEY'] = os.urandom(24)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://webapp_user:supersecret@localhost/my_web_app_db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://webapp_user:password@localhost/webapp_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize Extensions
@@ -173,6 +173,57 @@ def parse_session_yaml(yaml_text):
 
     return {'title': title, 'requirements': requirements}, None # Success
     
+def update_user_progress_and_unlock(user, content_type, content_id):
+    """
+    Finds a module item, marks it as complete for the user, and checks
+    if the parent module can be unlocked.
+    """
+    # Find the module item in the course structure
+    module_item = ModuleItem.query.filter_by(content_type=content_type, content_id=content_id).first()
+    
+    # If this content isn't in the course, there's nothing to do.
+    if not module_item:
+        return
+
+    # Find or create a progress record for this user and this item
+    progress_record = UserProgress.query.filter_by(user_id=user.id, module_item_id=module_item.id).first()
+    if not progress_record:
+        progress_record = UserProgress(user_id=user.id, module_item_id=module_item.id)
+        db.session.add(progress_record)
+    
+    # If it's already complete, we don't need to re-process everything.
+    if progress_record.status == 'completed':
+        db.session.commit() # Commit in case a new record was added
+        return
+        
+    progress_record.status = 'completed'
+    db.session.commit()
+
+    # --- MODULE UNLOCKING LOGIC ---
+    parent_module = module_item.submodule.module
+    
+    # Only check for unlocking if the user just completed something in their CURRENT module
+    if user.current_module_order != parent_module.order:
+        return
+
+    # Get all item IDs that belong to this entire module
+    all_item_ids = [
+        item.id for item in ModuleItem.query.join(Submodule)
+        .filter(Submodule.module_id == parent_module.id).all()
+    ]
+    
+    # Count how many of those items the user has completed
+    completed_items_count = UserProgress.query.filter(
+        UserProgress.user_id == user.id,
+        UserProgress.module_item_id.in_(all_item_ids),
+        UserProgress.status == 'completed'
+    ).count()
+
+    # If the counts match, the module is 100% complete. Unlock the next one!
+    if len(all_item_ids) > 0 and completed_items_count == len(all_item_ids):
+        user.current_module_order += 1
+        db.session.commit()
+    
 # app.py -> In the HELPER FUNCTIONS section
 def validate_user_code(user_html, requiremeants):
     """
@@ -256,7 +307,10 @@ def check_lab_step():
         
         # Check if the step they just finished was the last one
         if step.step_number >= total_steps:
-            # If so, generate the URL for the completion page
+            # --- NEW PROGRESS HOOK ---
+            # User has just completed the final step of the lab.
+            update_user_progress_and_unlock(current_user, 'lab', step.lab_id)
+            # --- END OF HOOK ---
             next_url = url_for('lab_complete', lab_id=step.lab_id)
         else:
             # Otherwise, generate the URL for the next step
@@ -319,9 +373,18 @@ def validate_session():
         return jsonify({'error': 'Session not found'}), 404
         
     # Use our powerful validator function from Subtask 4.2
-    results = validate_user_code(user_code, session.requirements)
-
-    return jsonify({'results': results})
+        results = validate_user_code(user_code, session.requirements)
+    
+        # --- NEW PROGRESS HOOK LOGIC ---
+        # `all(results)` will be True only if every item in the list is True. 
+        is_complete = all(results) 
+        
+        if is_complete:
+            update_user_progress_and_unlock(current_user, 'session', session_id)
+        
+        # Return both the individual results and the overall completion status
+        return jsonify({'results': results, 'is_complete': is_complete})
+        # --- END OF NEW LOGIC ---
 # app.py -> ROUTES section
 
 # ... (after lab_list route)
@@ -394,6 +457,10 @@ def submit_result():
     )
     db.session.add(attempt)
     db.session.commit()
+    
+    if passed:
+        update_user_progress_and_unlock(current_user, 'quiz', quiz_id)
+    # --- END OF HOOK ---
     
     return jsonify({'status': 'success', 'passed': passed})
 
@@ -521,6 +588,16 @@ class ModuleItem(db.Model):
     
     def __repr__(self):
         return f"ModuleItem(Type: '{self.content_type}', ID: {self.content_id})"
+
+    @property
+    def content_object(self):
+        if self.content_type == 'quiz':
+            return Quiz.query.get(self.content_id)
+        elif self.content_type == 'lab':
+            return Lab.query.get(self.content_id)
+        elif self.content_type == 'session':
+            return PracticalSession.query.get(self.content_id)
+        return None
 
 class UserProgress(db.Model):
     __tablename__ = 'user_progress'
@@ -683,8 +760,8 @@ class RegistrationForm(FlaskForm):
             raise ValidationError('That email is already in use. Please choose a different one.')
 
 class LoginForm(FlaskForm):
-    email = StringField('Email', 
-                        validators=[DataRequired(), Email()])
+    username = StringField('Username', 
+                           validators=[DataRequired(), Length(min=2, max=20)])
     password = PasswordField('Password', validators=[DataRequired()])
     remember = BooleanField('Remember Me')
     submit = SubmitField('Login')
@@ -700,8 +777,6 @@ def index():
         # Redirect to the appropriate dashboard based on role
         if current_user.role == 'admin':
             return redirect(url_for('admin_dashboard'))
-        else:
-            return redirect(url_for('dashboard'))
     
     # If not logged in, show the regular landing page
     return render_template('index.html')
@@ -728,16 +803,60 @@ def login():
         return redirect(url_for('index'))
     form = LoginForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
+        user = User.query.filter_by(username=form.username.data).first()
         if user and bcrypt.check_password_hash(user.password_hash, form.password.data):
             login_user(user, remember=form.remember.data)
             if user.role == 'admin':
                 return redirect(url_for('admin_dashboard'))
             else:
-                return redirect(url_for('dashboard'))
+                return redirect(url_for('course_dashboard'))
         else:
             flash('Login Unsuccessful. Please check email and password.', 'danger')
     return render_template('login.html', form=form)
+
+@app.route("/course")
+@login_required
+def course_dashboard():
+    if current_user.role == 'admin':
+        return redirect(url_for('admin_dashboard'))
+
+    # 1. Fetch the entire course structure, only published modules
+    modules = Module.query.filter_by(is_published=True).order_by(Module.order.asc()).all()
+
+    # 2. Get a map of the user's progress for efficient lookups
+    user_progress_map = get_user_progress_map(current_user.id)
+    
+    # 3. Calculate progress for each module and the overall course progress
+    module_progress_data = {}
+    total_items_in_course = 0
+    completed_items_in_course = 0
+
+    for module in modules:
+        # Calculate progress for this specific module
+        progress_percent = calculate_module_progress(module, user_progress_map)
+        module_progress_data[module.id] = progress_percent
+        
+        # Add to overall course totals. We need to query the item count here.
+        # This is a bit more expensive but necessary for an accurate overall bar.
+        module_item_count = ModuleItem.query.join(Submodule).filter(Submodule.module_id == module.id).count()
+        total_items_in_course += module_item_count
+        
+        # Calculate completed items for this module based on the percentage
+        completed_count_for_module = round(module_item_count * (progress_percent / 100))
+        completed_items_in_course += completed_count_for_module
+
+    # Calculate final overall course progress
+    overall_progress = 0
+    if total_items_in_course > 0:
+        overall_progress = round((completed_items_in_course / total_items_in_course) * 100)
+
+    return render_template(
+        'course.html', 
+        modules=modules,
+        module_progress_data=module_progress_data,
+        user_progress_map=user_progress_map,
+        overall_progress=overall_progress
+    )
 
 @app.route("/logout")
 def logout():
@@ -1139,67 +1258,443 @@ def admin_labs():
     
 # app.py -> ROUTES section
 
-@app.route("/admin/sessions", methods=['GET', 'POST'])
+@app.route("/admin/sessions")
 @login_required
 def admin_sessions():
     if current_user.role != 'admin':
         flash('You do not have permission to access this page.', 'danger')
         return redirect(url_for('dashboard'))
+    
+    sessions = PracticalSession.query.all()
+    return render_template('admin_sessions.html', sessions=sessions)
+
+# ===================================
+# COURSE BUILDER ROUTES (ADMIN)
+# ===================================
+
+@app.route("/admin/course-builder", methods=['GET', 'POST'])
+@login_required
+def admin_course_builder():
+    if current_user.role != 'admin':
+        flash('You do not have permission to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    # Handle Module Creation
+    if request.method == 'POST':
+        title = request.form.get('title')
+        is_published = 'is_published' in request.form
+
+        if not title:
+            flash('Module title cannot be empty.', 'danger')
+        else:
+            # Determine the order for the new module
+            last_module = Module.query.order_by(Module.order.desc()).first()
+            new_order = last_module.order + 1 if last_module else 1
+            
+            new_module = Module(title=title, order=new_order, is_published=is_published)
+            db.session.add(new_module)
+            db.session.commit()
+            flash(f"Module '{title}' created successfully.", 'success')
+        return redirect(url_for('admin_course_builder'))
+
+    # GET Request: Display all modules
+    modules = Module.query.order_by(Module.order.asc()).all()
+    return render_template('admin_course_builder.html', modules=modules)
+
+@app.route("/admin/module/<int:module_id>/delete", methods=['POST'])
+@login_required
+def delete_module(module_id):
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Permission denied'}), 403
+    
+    module_to_delete = Module.query.get_or_404(module_id)
+    
+    # Re-order subsequent modules
+    subsequent_modules = Module.query.filter(Module.order > module_to_delete.order).all()
+    for mod in subsequent_modules:
+        mod.order -= 1
+        
+    db.session.delete(module_to_delete)
+    db.session.commit()
+    flash(f"Module '{module_to_delete.title}' and all its content have been deleted.", 'success')
+    return redirect(url_for('admin_course_builder'))
+
+@app.route("/admin/module/<int:module_id>/move/<direction>", methods=['POST'])
+@login_required
+def move_module(module_id, direction):
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Permission denied'}), 403
+
+    module_to_move = Module.query.get_or_404(module_id)
+    
+    if direction == 'up':
+        swap_with = Module.query.filter(Module.order < module_to_move.order).order_by(Module.order.desc()).first()
+    elif direction == 'down':
+        swap_with = Module.query.filter(Module.order > module_to_move.order).order_by(Module.order.asc()).first()
+    else:
+        return redirect(url_for('admin_course_builder')) # Invalid direction
+
+    if swap_with:
+        # Use a 3-step swap to avoid unique constraint violation
+        original_order = module_to_move.order
+        swap_with_order = swap_with.order
+
+        # Temporarily move the `swap_with` module out of the way
+        swap_with.order = 0  # Placeholder, assumes 0 is not a valid order
+        db.session.flush()   # Flush to execute this change immediately
+
+        # Move the target module to its new position
+        module_to_move.order = swap_with_order
+        db.session.flush()
+
+        # Move the other module to the original position
+        swap_with.order = original_order
+        
+        db.session.commit() # Commit the entire transaction
+        flash(f"Module '{module_to_move.title}' has been moved.", 'info')
+
+    return redirect(url_for('admin_course_builder'))    
+
+# ===================================
+# SUBMODULE MANAGEMENT ROUTES (ADMIN)
+# ===================================
+
+@app.route("/admin/module/<int:module_id>/manage", methods=['GET', 'POST'])
+@login_required
+def admin_manage_submodules(module_id):
+    if current_user.role != 'admin':
+        flash('You do not have permission to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    module = Module.query.get_or_404(module_id)
+
+    # Handle Submodule Creation
+    if request.method == 'POST':
+        title = request.form.get('title')
+        if not title:
+            flash('Submodule title cannot be empty.', 'danger')
+        else:
+            last_submodule = Submodule.query.filter_by(module_id=module.id).order_by(Submodule.order.desc()).first()
+            new_order = last_submodule.order + 1 if last_submodule else 1
+            
+            new_submodule = Submodule(title=title, order=new_order, module_id=module.id)
+            db.session.add(new_submodule)
+            db.session.commit()
+            flash(f"Submodule '{title}' created successfully.", 'success')
+        return redirect(url_for('admin_manage_submodules', module_id=module.id))
+
+    # GET Request: Display submodules for the given module
+    # The relationship on the Module model automatically orders them.
+    submodules = module.submodules.all()
+    return render_template('admin_manage_submodules.html', module=module, submodules=submodules)
+
+@app.route("/admin/submodule/<int:submodule_id>/edit", methods=['GET', 'POST'])
+@login_required
+def edit_submodule(submodule_id):
+    if current_user.role != 'admin':
+        flash('Permission denied.', 'danger')
+        return redirect(url_for('dashboard'))
+        
+    submodule = Submodule.query.get_or_404(submodule_id)
+    if request.method == 'POST':
+        new_title = request.form.get('title')
+        if not new_title:
+            flash('Title cannot be empty.', 'danger')
+            return redirect(url_for('edit_submodule', submodule_id=submodule.id))
+        
+        submodule.title = new_title
+        db.session.commit()
+        flash(f"Submodule title updated to '{new_title}'.", 'success')
+        return redirect(url_for('admin_manage_submodules', module_id=submodule.module_id))
+
+    return render_template('admin_edit_submodule.html', submodule=submodule)
+
+@app.route("/admin/submodule/<int:submodule_id>/delete", methods=['POST'])
+@login_required
+def delete_submodule(submodule_id):
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Permission denied'}), 403
+    
+    submodule_to_delete = Submodule.query.get_or_404(submodule_id)
+    module_id = submodule_to_delete.module_id # Save for redirect
+    
+    # Re-order subsequent submodules within the same parent module
+    subsequent_submodules = Submodule.query.filter(
+        Submodule.module_id == module_id, 
+        Submodule.order > submodule_to_delete.order
+    ).all()
+    for sub in subsequent_submodules:
+        sub.order -= 1
+        
+    db.session.delete(submodule_to_delete)
+    db.session.commit()
+    flash(f"Submodule '{submodule_to_delete.title}' has been deleted.", 'success')
+    return redirect(url_for('admin_manage_submodules', module_id=module_id))
+
+@app.route("/admin/submodule/<int:submodule_id>/move/<direction>", methods=['POST'])
+@login_required
+def move_submodule(submodule_id, direction):
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Permission denied'}), 403
+
+    submodule_to_move = Submodule.query.get_or_404(submodule_id)
+    module_id = submodule_to_move.module_id # Needed for query and redirect
+    
+    query = Submodule.query.filter_by(module_id=module_id)
+    if direction == 'up':
+        swap_with = query.filter(Submodule.order < submodule_to_move.order).order_by(Submodule.order.desc()).first()
+    elif direction == 'down':
+        swap_with = query.filter(Submodule.order > submodule_to_move.order).order_by(Submodule.order.asc()).first()
+    else:
+        return redirect(url_for('admin_manage_submodules', module_id=module_id))
+
+    if swap_with:
+        original_order = submodule_to_move.order
+        submodule_to_move.order = swap_with.order
+        swap_with.order = original_order
+        db.session.commit()
+    return redirect(url_for('admin_manage_submodules', module_id=module_id))
+
+# ===================================
+# CONTENT ITEM MANAGEMENT ROUTES (ADMIN)
+# ===================================
+
+@app.route("/admin/submodule/<int:submodule_id>/content", methods=['GET', 'POST'])
+@login_required
+def admin_manage_content(submodule_id):
+    if current_user.role != 'admin':
+        flash('Permission denied.', 'danger')
+        return redirect(url_for('dashboard'))
+        
+    submodule = Submodule.query.get_or_404(submodule_id)
 
     if request.method == 'POST':
-        if 'session_file' not in request.files:
-            flash('No file part in the request.', 'danger')
-            return redirect(request.url)
-        
-        file = request.files['session_file']
-        if file.filename == '':
-            flash('No file selected.', 'danger')
-            return redirect(request.url)
+        content_type = request.form.get('content_type')
+        content_id = request.form.get('content_id')
 
-        if file and file.filename.endswith('.yml'):
-            filename = file.filename
-            if PracticalSession.query.filter_by(filename=filename).first():
-                flash(f"A session with the filename '{filename}' already exists.", 'danger')
-                return redirect(request.url)
-
-            yaml_text = file.stream.read().decode("utf-8")
-            parsed_data, error_message = parse_session_yaml(yaml_text)
-
-            if error_message:
-                flash(f"Upload Failed: {error_message}", 'danger')
-                return redirect(request.url)
-
-            try:
-                # Create the parent PracticalSession
-                new_session = PracticalSession(title=parsed_data['title'], filename=filename)
-                db.session.add(new_session)
-                
-                # Create all the Requirement objects
-                for req_data in parsed_data['requirements']:
-                    new_req = Requirement(
-                        description=req_data['description'],
-                        check_type=req_data['check_type'],
-                        selector=req_data.get('selector'),
-                        attribute_name=req_data.get('attribute_name'),
-                        value=req_data.get('value'),
-                        session=new_session
-                    )
-                    db.session.add(new_req)
-                
-                db.session.commit()
-                flash(f"Successfully uploaded and created Session: '{parsed_data['title']}'.", 'success')
-            except Exception as e:
-                db.session.rollback()
-                flash(f"A database error occurred: {e}", "danger")
-
-            return redirect(url_for('admin_sessions'))
+        if not content_type or not content_id:
+            flash('Both content type and a specific item must be selected.', 'danger')
         else:
-            flash('Invalid file type. Please upload a .yml file.', 'danger')
-            return redirect(request.url)
+            last_item = ModuleItem.query.filter_by(submodule_id=submodule.id).order_by(ModuleItem.order.desc()).first()
+            new_order = last_item.order + 1 if last_item else 1
+            
+            new_item = ModuleItem(
+                order=new_order, 
+                submodule_id=submodule.id,
+                content_type=content_type,
+                content_id=int(content_id)
+            )
+            db.session.add(new_item)
+            db.session.commit()
+            flash('Content item added successfully.', 'success')
+        return redirect(url_for('admin_manage_content', submodule_id=submodule_id))
 
-    # Logic for GET request
-    sessions = PracticalSession.query.order_by(PracticalSession.id.desc()).all()
-    return render_template('admin_sessions.html', sessions=sessions)    
+    # --- GET Request Logic ---
+    # Find all content IDs that are already used in *any* module
+    assigned_quiz_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='quiz').all()}
+    assigned_lab_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='lab').all()}
+    assigned_session_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='session').all()}
+
+    # Fetch available content that is NOT in the assigned lists
+    available_quizzes = Quiz.query.filter(Quiz.id.notin_(assigned_quiz_ids)).order_by(Quiz.title).all()
+    available_labs = Lab.query.filter(Lab.id.notin_(assigned_lab_ids)).order_by(Lab.title).all()
+    available_sessions = PracticalSession.query.filter(PracticalSession.id.notin_(assigned_session_ids)).order_by(PracticalSession.title).all()
+    
+    # The submodule's items are fetched via the relationship and are already ordered
+    items = submodule.items.all()
+
+    return render_template(
+        'admin_manage_content.html', 
+        submodule=submodule, 
+        items=items,
+        available_quizzes=available_quizzes,
+        available_labs=available_labs,
+        available_sessions=available_sessions
+    )
+
+@app.route("/admin/item/<int:item_id>/delete", methods=['POST'])
+@login_required
+def delete_content_item(item_id):
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Permission denied'}), 403
+    
+    item_to_delete = ModuleItem.query.get_or_404(item_id)
+    submodule_id = item_to_delete.submodule_id
+
+    subsequent_items = ModuleItem.query.filter(
+        ModuleItem.submodule_id == submodule_id, 
+        ModuleItem.order > item_to_delete.order
+    ).all()
+    for item in subsequent_items:
+        item.order -= 1
+        
+    db.session.delete(item_to_delete)
+    db.session.commit()
+    flash('Content item removed from submodule.', 'success')
+    return redirect(url_for('admin_manage_content', submodule_id=submodule_id))
+
+@app.route("/admin/item/<int:item_id>/move/<direction>", methods=['POST'])
+@login_required
+def move_content_item(item_id, direction):
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Permission denied'}), 403
+
+    item_to_move = ModuleItem.query.get_or_404(item_id)
+    submodule_id = item_to_move.submodule_id
+    
+    query = ModuleItem.query.filter_by(submodule_id=submodule_id)
+    if direction == 'up':
+        swap_with = query.filter(ModuleItem.order < item_to_move.order).order_by(ModuleItem.order.desc()).first()
+    elif direction == 'down':
+        swap_with = query.filter(ModuleItem.order > item_to_move.order).order_by(ModuleItem.order.asc()).first()
+    else:
+        return redirect(url_for('admin_manage_content', submodule_id=submodule_id))
+
+    if swap_with:
+        original_order = item_to_move.order
+        item_to_move.order = swap_with.order
+        swap_with.order = original_order
+        db.session.commit()
+
+    return redirect(url_for('admin_manage_content', submodule_id=submodule_id))
+
+@app.route("/admin/modules/reorder", methods=['POST'])
+@login_required
+def reorder_modules():
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
+    
+    new_order_ids = request.json.get('new_order')
+    if not new_order_ids:
+        return jsonify({'status': 'error', 'message': 'No new order provided'}), 400
+
+    try:
+        modules = Module.query.filter(Module.id.in_(new_order_ids)).all()
+        module_map = {str(module.id): module for module in modules}
+
+        for index, module_id in enumerate(new_order_ids):
+            if module_id in module_map:
+                module_map[module_id].order = index + 1
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Module order updated.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route("/admin/submodules/reorder", methods=['POST'])
+@login_required
+def reorder_submodules():
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
+    
+    new_order_ids = request.json.get('new_order')
+    submodule_parent_id = request.json.get('parent_id') # Assuming parent_id is sent to scope the reorder
+    
+    if not new_order_ids or not submodule_parent_id:
+        return jsonify({'status': 'error', 'message': 'Missing new order or parent ID'}), 400
+
+    try:
+        submodules = Submodule.query.filter(
+            Submodule.module_id == submodule_parent_id,
+            Submodule.id.in_(new_order_ids)
+        ).all()
+        submodule_map = {str(submodule.id): submodule for submodule in submodules}
+
+        for index, submodule_id in enumerate(new_order_ids):
+            if submodule_id in submodule_map:
+                submodule_map[submodule_id].order = index + 1
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Submodule order updated.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route("/admin/items/reorder", methods=['POST'])
+@login_required
+def reorder_content_items():
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
+    
+    new_order_ids = request.json.get('new_order')
+    item_parent_id = request.json.get('parent_id') # Assuming parent_id is sent to scope the reorder
+    
+    if not new_order_ids or not item_parent_id:
+        return jsonify({'status': 'error', 'message': 'Missing new order or parent ID'}), 400
+
+    try:
+        items = ModuleItem.query.filter(
+            ModuleItem.submodule_id == item_parent_id,
+            ModuleItem.id.in_(new_order_ids)
+        ).all()
+        item_map = {str(item.id): item for item in items}
+
+        for index, item_id in enumerate(new_order_ids):
+            if item_id in item_map:
+                item_map[item_id].order = index + 1
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Content item order updated.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route("/admin/module/<int:module_id>/rename", methods=['POST'])
+@login_required
+def rename_module(module_id):
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
+    
+    module = Module.query.get_or_404(module_id)
+    new_title = request.form.get('new_module_title')
+
+    if not new_title:
+        return jsonify({'status': 'error', 'message': 'New title cannot be empty.'}), 400
+    
+    module.title = new_title
+    db.session.commit()
+    flash(f"Module '{module.title}' renamed successfully.", 'success')
+    return jsonify({'status': 'success', 'message': 'Module renamed successfully.'})
+
+@app.route("/admin/submodule/<int:submodule_id>/rename", methods=['POST'])
+@login_required
+def rename_submodule(submodule_id):
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
+    
+    submodule = Submodule.query.get_or_404(submodule_id)
+    new_title = request.form.get('new_submodule_title')
+
+    if not new_title:
+        return jsonify({'status': 'error', 'message': 'New title cannot be empty.'}), 400
+    
+    submodule.title = new_title
+    db.session.commit()
+    flash(f"Submodule '{submodule.title}' renamed successfully.", 'success')
+    return jsonify({'status': 'success', 'message': 'Submodule renamed successfully.'})
+
+@app.route("/admin/item/<int:item_id>/rename", methods=['POST'])
+@login_required
+def rename_content_item(item_id):
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
+    
+    item = ModuleItem.query.get_or_404(item_id)
+    new_title = request.form.get('new_content_item_title')
+
+    if not new_title:
+        return jsonify({'status': 'error', 'message': 'New title cannot be empty.'}), 400
+    
+    # This is a bit tricky as content_object is a property.
+    # We need to get the actual object (Quiz, Lab, PracticalSession) and update its title.
+    content_object = item.content_object
+    if content_object:
+        content_object.title = new_title
+        db.session.commit()
+        flash(f"Content item '{content_object.title}' renamed successfully.", 'success')
+        return jsonify({'status': 'success', 'message': 'Content item renamed successfully.'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Content object not found.'}), 404
+
+
 
 # ===================================
 # 5. CUSTOM CLI COMMANDS
@@ -1362,6 +1857,20 @@ def process_lab(filepath):
         db.session.rollback()
         print(f"DATABASE ERROR: {e}")
         print("Transaction has been rolled back. No changes were saved.")
+
+@app.cli.command("promote")
+@click.argument("username")
+def promote(username):
+    """Promote an existing user to admin."""
+    from app import db, User
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        print("User not found.")
+        return
+    user.role = "admin"
+    db.session.commit()
+    print(f"{username} promoted to admin.")
+
 
 # ===================================
 # 6. APP EXECUTION

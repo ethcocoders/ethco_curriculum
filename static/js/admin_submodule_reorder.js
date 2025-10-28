@@ -1,0 +1,58 @@
+document.addEventListener('DOMContentLoaded', function() {
+    const submoduleList = document.getElementById('submodule-list'); // Target the new div container
+    const saveOrderBtn = document.getElementById('saveOrderBtn');
+    const parentId = saveOrderBtn.dataset.parentId; // Get the parent module ID
+    let initialOrder = [];
+
+    if (submoduleList) {
+        // Capture initial order
+        Array.from(submoduleList.children).forEach(col => {
+            const card = col.querySelector('.submodule-card');
+            if (card) {
+                initialOrder.push(col.dataset.id);
+            }
+        });
+
+        const sortable = new Sortable(submoduleList, {
+            handle: '.handle', // Drag handle within the card
+            animation: 150,
+            ghostClass: 'sortable-ghost', // Class for the ghost element (defined in modern.css)
+            onEnd: function (evt) {
+                const newOrder = Array.from(submoduleList.children).map(col => col.dataset.id);
+                // Only show save button if order has actually changed
+                if (JSON.stringify(initialOrder) !== JSON.stringify(newOrder)) {
+                    saveOrderBtn.style.display = 'block';
+                } else {
+                    saveOrderBtn.style.display = 'none';
+                }
+            },
+        });
+
+        saveOrderBtn.addEventListener('click', function() {
+            const newOrder = Array.from(submoduleList.children).map(col => col.dataset.id);
+            
+            fetch('/admin/submodules/reorder', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ new_order: newOrder, parent_id: parentId }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Submodule order updated successfully!');
+                    initialOrder = newOrder; // Update initial order after successful save
+                    saveOrderBtn.style.display = 'none'; // Hide button after saving
+                    window.location.reload(); 
+                } else {
+                    alert('Error updating submodule order: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while saving the order.');
+            });
+        });
+    }
+});

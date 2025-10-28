@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Submodule{% endblock %}
+
+{% block content %}
+
+<!-- Page Heading and Breadcrumbs -->
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0 text-gray-800">Edit Submodule</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb bg-transparent p-0 m-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin_course_builder') }}">Course Builder</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('admin_manage_submodules', module_id=submodule.module.id) }}">{{ submodule.module.title }}</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Edit: {{ submodule.title }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<!-- Flash Messages -->
+{% include '_flash_messages.html' %}
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Update Submodule Title</h6>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('edit_submodule', submodule_id=submodule.id) }}" method="POST">
+                    <div class="form-group">
+                        <label for="title">Submodule Title</label>
+                        <input type="text" class="form-control" id="title" name="title" value="{{ submodule.title }}" required>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                    <a href="{{ url_for('admin_manage_submodules', module_id=submodule.module_id) }}" class="btn btn-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

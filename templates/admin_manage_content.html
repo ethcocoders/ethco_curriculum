@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Content{% endblock %}
+
+{% block content %}
+
+<!-- Page Heading and Breadcrumbs -->
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0 text-gray-800">Manage Content</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb bg-transparent p-0 m-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin_course_builder') }}">Course Builder</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('admin_manage_submodules', module_id=submodule.module.id) }}">{{ submodule.module.title }}</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ submodule.title }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<!-- Flash Messages -->
+{% include '_flash_messages.html' %}
+
+<div class="row">
+    <!-- Content Item List Area -->
+    <div class="col-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">Content in "{{ submodule.title }}"</h6>
+                <button id="saveOrderBtn" class="btn btn-success btn-sm" style="display: none;" data-parent-id="{{ submodule.id }}">Save New Order</button>
+            </div>
+            <div class="card-body">
+                {% if items %}
+                <div id="content-item-list" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                    {% for item in items %}
+                    <div class="col" data-id="{{ item.id }}">
+                        <div class="content-item-card card h-100 shadow-sm">
+                            <a href="{% if item.content_type == 'quiz' %}
+                                        {{ url_for('quiz_viewer', quiz_id=item.content_id) }}
+                                    {% elif item.content_type == 'lab' %}
+                                        {{ url_for('start_lab', lab_id=item.content_id) }}
+                                    {% elif item.content_type == 'session' %}
+                                        {{ url_for('session_viewer', session_id=item.content_id) }}
+                                    {% else %}
+                                        #
+                                    {% endif %}" class="card-body-link">
+                                <div class="card-body d-flex flex-column align-items-center justify-content-center text-center">
+                                    {% if item.content_type == 'quiz' %}
+                                        <i class="fas fa-question-circle fa-3x mb-3 text-primary"></i>
+                                        <h5 class="card-title text-white">{{ item.content_object.title if item.content_object else 'Unknown Quiz' }}</h5>
+                                    {% elif item.content_type == 'lab' %}
+                                        <i class="fas fa-flask fa-3x mb-3 text-success"></i>
+                                        <h5 class="card-title text-white">{{ item.content_object.title if item.content_object else 'Unknown Lab' }}</h5>
+                                    {% elif item.content_type == 'session' %}
+                                        <i class="fas fa-keyboard fa-3x mb-3 text-warning"></i>
+                                        <h5 class="card-title text-white">{{ item.content_object.title if item.content_object else 'Unknown Session' }}</h5>
+                                    {% else %}
+                                        <i class="fas fa-file fa-3x mb-3 text-info"></i>
+                                        <h5 class="card-title text-white">Unknown Content</h5>
+                                    {% endif %}
+                                    <p class="card-text text-muted">Type: {{ item.content_type.capitalize() }}</p>
+                                </div>
+                            </a>
+                            <div class="card-footer d-flex justify-content-between align-items-center">
+                                <i class="fas fa-grip-vertical handle text-gray-500" style="cursor: grab;"></i>
+                                <div class="dropdown no-arrow">
+                                    <button class="btn btn-sm btn-secondary dropdown-toggle-icon" type="button"
+                                        id="contentItemActions{{ item.id }}" data-bs-toggle="dropdown" aria-haspopup="true"
+                                        aria-expanded="false">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-right shadow animated--fade-in"
+                                        aria-labelledby="contentItemActions{{ item.id }}">
+                                        <a class="dropdown-item" href="{% if item.content_type == 'quiz' %}
+                                        {{ url_for('quiz_viewer', quiz_id=item.content_id) }}
+                                    {% elif item.content_type == 'lab' %}
+                                        {{ url_for('start_lab', lab_id=item.content_id) }}
+                                    {% elif item.content_type == 'session' %}
+                                        {{ url_for('session_viewer', session_id=item.content_id) }}
+                                    {% else %}
+                                        #
+                                    {% endif %}">
+                                            <i class="fas fa-folder-open fa-sm fa-fw mr-2 text-gray-400"></i>
+                                            Open Item
+                                        </a>
+                                        <a class="dropdown-item rename-content-item-btn" href="#" data-bs-toggle="modal" data-bs-target="#renameContentItemModal" data-content-item-id="{{ item.id }}" data-content-item-title="{{ item.content_object.title if item.content_object else 'Unknown' }}">
+                                            <i class="fas fa-pen fa-sm fa-fw mr-2 text-gray-400"></i>
+                                            Rename Item
+                                        </a>
+                                        <div class="dropdown-divider"></div>
+                                        <form action="{{ url_for('delete_content_item', item_id=item.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to remove this item from the submodule? This cannot be undone.');">
+                                            <button type="submit" class="dropdown-item text-danger">
+                                                <i class="fas fa-trash fa-sm fa-fw mr-2 text-danger"></i>
+                                                Remove Item
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-info text-center">
+                    This submodule is empty. Click the '+' button to add content.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Floating Action Button for Add Content Item -->
+<button class="fab-btn" data-bs-toggle="modal" data-bs-target="#addContentItemModal" title="Add Content Item">
+    <i class="fas fa-plus"></i>
+</button>
+
+<!-- Add Content Item Modal -->
+<div class="modal fade" id="addContentItemModal" tabindex="-1" role="dialog" aria-labelledby="addContentItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addContentItemModalLabel">Add Content Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addContentForm" action="{{ url_for('admin_manage_content', submodule_id=submodule.id) }}" method="POST">
+                    <div class="form-group mb-3">
+                        <label for="contentType">1. Select Content Category</label>
+                        <select class="form-control" id="contentType" name="content_type" required>
+                            <option value="" selected disabled>-- Choose a category --</option>
+                            <option value="quiz">Quiz</option>
+                            <option value="lab">Lab</option>
+                            <option value="session">Practical Session</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="contentId">2. Select Content Item</label>
+                        <!-- Quiz Dropdown -->
+                        <select class="form-control content-dropdown" id="quizSelect" style="display: none;" disabled>
+                            <option value="">-- Select a Quiz --</option>
+                            {% for quiz in available_quizzes %}<option value="{{ quiz.id }}">{{ quiz.title }}</option>{% endfor %}
+                        </select>
+                        <!-- Lab Dropdown -->
+                        <select class="form-control content-dropdown" id="labSelect" style="display: none;" disabled>
+                             <option value="">-- Select a Lab --</option>
+                            {% for lab in available_labs %}<option value="{{ lab.id }}">{{ lab.title }}</option>{% endfor %}
+                        </select>
+                        <!-- Session Dropdown -->
+                        <select class="form-control content-dropdown" id="sessionSelect" style="display: none;" disabled>
+                             <option value="">-- Select a Session --</option>
+                            {% for session in available_sessions %}<option value="{{ session.id }}">{{ session.title }}</option>{% endfor %}
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block">
+                        <i class="fas fa-plus-circle"></i> Add to Submodule
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rename Content Item Modal -->
+<div class="modal fade" id="renameContentItemModal" tabindex="-1" role="dialog" aria-labelledby="renameContentItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="renameContentItemModalLabel">Rename Content Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="renameContentItemForm" method="POST">
+                    <div class="form-group mb-3">
+                        <label for="new_content_item_title">New Content Item Title</label>
+                        <input type="text" class="form-control" id="new_content_item_title" name="new_content_item_title" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Rename</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/admin_content_reorder.js') }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Explicitly initialize Bootstrap dropdowns
+        var dropdownElementList = [].slice.call(document.querySelectorAll('.dropdown-toggle-icon'))
+        var dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl)
+        })
+
+        // Handle Content Type selection for Add Content Item Modal
+        const contentTypeSelect = document.getElementById('contentType');
+        const contentDropdowns = document.querySelectorAll('.content-dropdown');
+        const addContentForm = document.getElementById('addContentForm');
+
+        contentTypeSelect.addEventListener('change', function() {
+            contentDropdowns.forEach(dropdown => {
+                dropdown.style.display = 'none';
+                dropdown.disabled = true;
+                dropdown.removeAttribute('name');
+            });
+
+            const selectedType = this.value;
+            if (selectedType) {
+                const targetDropdown = document.getElementById(selectedType + 'Select');
+                if (targetDropdown) {
+                    targetDropdown.style.display = 'block';
+                    targetDropdown.disabled = false;
+                    targetDropdown.setAttribute('name', 'content_id');
+                }
+            }
+        });
+
+        addContentForm.addEventListener('submit', function(event) {
+            const selectedType = contentTypeSelect.value;
+            if (selectedType) {
+                const activeDropdown = document.querySelector('.content-dropdown[name="content_id"]');
+                if (activeDropdown && !activeDropdown.value) {
+                    alert('Please select a specific content item before adding.');
+                    event.preventDefault();
+                }
+            }
+        });
+
+        // Handle Rename Content Item Modal
+        const renameContentItemModal = document.getElementById('renameContentItemModal');
+        renameContentItemModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget; // Button that triggered the modal
+            const contentItemId = button.getAttribute('data-content-item-id');
+            const contentItemTitle = button.getAttribute('data-content-item-title');
+            
+            const modalTitle = renameContentItemModal.querySelector('.modal-title');
+            const newContentItemTitleInput = renameContentItemModal.querySelector('#new_content_item_title');
+            const renameContentItemForm = renameContentItemModal.querySelector('#renameContentItemForm');
+
+            modalTitle.textContent = `Rename: ${contentItemTitle}`;
+            newContentItemTitleInput.value = contentItemTitle;
+            renameContentItemForm.action = `/admin/item/${contentItemId}/rename`; // Set form action dynamically
+        });
+    });
+</script>
+{% endblock %}

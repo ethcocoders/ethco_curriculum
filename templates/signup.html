@@ -3,11 +3,14 @@
 
 {% block title %}Sign Up{% endblock %}
 
+{% block styles %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern.css') }}">
+{% endblock %}
+
 {% block content %}
-    <div class="row">
-        <div class="col-md-6 offset-md-3">
-            <h2 class="text-center mb-4">Create An Account</h2>
-            <div class="card p-4">
+    <div class="signup-container">
+    <div class="signup-card">
+        <h2 class="text-center mb-4">Create An Account</h2>
                 <form method="POST" action="">
                     {{ form.hidden_tag() }} <!-- CSRF Token -->
                     
@@ -63,7 +66,7 @@
                     </div>
                 </form>
             </div>
-            <div class="text-center mt-3">
+            <div class="text-center mt-3 signup-login-link">
                 <small class="text-muted">
                     Already Have An Account? <a href="{{ url_for('login') }}">Log In</a>
                 </small>
