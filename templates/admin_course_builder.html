@@ -140,6 +140,12 @@
 <script src="{{ url_for('static', filename='js/admin_course_builder.js') }}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Explicitly initialize Bootstrap dropdowns
+        var dropdownElementList = [].slice.call(document.querySelectorAll('.dropdown-toggle-icon'))
+        var dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl)
+        })
+
         // Handle Rename Module Modal
         const renameModuleModal = document.getElementById('renameModuleModal');
         renameModuleModal.addEventListener('show.bs.modal', function (event) {
