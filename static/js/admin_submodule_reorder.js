@@ -13,20 +13,25 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-        const sortable = new Sortable(submoduleList, {
-            handle: '.handle', // Drag handle within the card
-            animation: 150,
-            ghostClass: 'sortable-ghost', // Class for the ghost element (defined in modern.css)
-            onEnd: function (evt) {
-                const newOrder = Array.from(submoduleList.children).map(col => col.dataset.id);
-                // Only show save button if order has actually changed
-                if (JSON.stringify(initialOrder) !== JSON.stringify(newOrder)) {
-                    saveOrderBtn.style.display = 'block';
-                } else {
-                    saveOrderBtn.style.display = 'none';
-                }
-            },
-        });
+        // Check if Sortable library is loaded before instantiation
+        if (typeof Sortable !== 'undefined') {
+            const sortable = new Sortable(submoduleList, {
+                handle: '.handle', // Drag handle within the card
+                animation: 150,
+                ghostClass: 'sortable-ghost', // Class for the ghost element (defined in modern.css)
+                onEnd: function (evt) {
+                    const newOrder = Array.from(submoduleList.children).map(col => col.dataset.id);
+                    // Only show save button if order has actually changed
+                    if (JSON.stringify(initialOrder) !== JSON.stringify(newOrder)) {
+                        saveOrderBtn.style.display = 'block';
+                    } else {
+                        saveOrderBtn.style.display = 'none';
+                    }
+                },
+            });
+        } else {
+            console.error("Sortable library not found. Drag-and-drop functionality will not work.");
+        }
 
         saveOrderBtn.addEventListener('click', function() {
             const newOrder = Array.from(submoduleList.children).map(col => col.dataset.id);

@@ -11,4 +11,4 @@ Flask-WTF
 WTForms
 email-validator
 click
-psycopg2
+psycopg2-binary
