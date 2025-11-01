@@ -1316,8 +1316,21 @@ def delete_module(module_id):
     module_to_delete = Module.query.get_or_404(module_id)
     
     try:
-        # Re-order subsequent modules
-        subsequent_modules = Module.query.filter(Module.order > module_to_delete.order).all()
+        # Store the order of the module to be deleted
+        deleted_module_order = module_to_delete.order
+
+        # Temporarily set the order of the module to be deleted to a non-conflicting value
+        # This effectively "frees up" its order slot before reordering others
+        module_to_delete.order = -999999 # Use a large negative number
+        db.session.flush() # Apply this change to the session
+
+        # Delete the module
+        db.session.delete(module_to_delete)
+        # db.session.flush() # No need to flush here, deletion will happen on commit
+
+        # Re-order subsequent modules (those whose order was greater than the deleted module's original order)
+        # Iterate in ascending order to avoid conflicts when decrementing
+        subsequent_modules = Module.query.filter(Module.order > deleted_module_order).order_by(Module.order.asc()).all()
         for mod in subsequent_modules:
             mod.order -= 1
             
@@ -1344,24 +1357,25 @@ def move_module(module_id, direction):
         return redirect(url_for('admin_course_builder')) # Invalid direction
 
     if swap_with:
-        # Use a 3-step swap to avoid unique constraint violation
-        original_order = module_to_move.order
-        swap_with_order = swap_with.order
-
-        # Temporarily move the `swap_with` module out of the way
-        swap_with.order = 0  # Placeholder, assumes 0 is not a valid order
-        db.session.flush()   # Flush to execute this change immediately
-
-        # Move the target module to its new position
-        module_to_move.order = swap_with_order
-        db.session.flush()
-
-        # Move the other module to the original position
-        swap_with.order = original_order
+                try:
+                    # Step 1: Temporarily move one module to a safe, non-conflicting order
+                    # Use a very large negative number to ensure it doesn't conflict with any valid positive order
+                    swap_with.order = -999999 # A value guaranteed not to conflict
+                    db.session.flush() # Apply change to session, but not commit yet
         
-        db.session.commit() # Commit the entire transaction
-        flash(f"Module '{module_to_move.title}' has been moved.", 'info')
-
+                    # Step 2: Move the target module to the other module's original position
+                    module_to_move.order = swap_with_order
+                    db.session.flush()
+        
+                    # Step 3: Move the other module to the target module's original position
+                    swap_with.order = original_order
+                    db.session.commit() # Commit all changes in one transaction
+                    flash(f"Module '{module_to_move.title}' has been moved.", 'info')
+                except Exception as e:
+                    db.session.rollback() # Rollback if any step fails
+                    flash(f"Error moving module: {e}", 'danger')
+                    print(f"Error moving module: {e}") # For debugging
+                    return redirect(url_for('admin_course_builder'))
     return redirect(url_for('admin_course_builder'))    
 
 # ===================================
@@ -1715,6 +1729,8 @@ def create_submodule():
         return jsonify({'status': 'success', 'message': 'Submodule created', 'submodule_id': new_submodule.id})
     except Exception as e:
         db.session.rollback()
+        import traceback
+        traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route("/admin/submodule/<int:submodule_id>/duplicate", methods=['POST'])

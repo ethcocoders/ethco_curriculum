@@ -1,160 +1,93 @@
 {% extends "base.html" %}
+{% from "_course_structure.html" import render_module %}
 
-{% block title %}Course Dashboard{% endblock %}
+{% block title %}Admin Dashboard - EthCo Learning{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <!-- Page Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h2">My Learning Path</h1>
-        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
-            <i class="fas fa-chart-pie mr-1"></i> View Stats
-        </a>
-    </div>
-
-    <!-- Overall Progress Bar -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h5 class="card-title font-weight-bold text-primary">Overall Course Progress</h5>
-            <div class="d-flex align-items-center">
-                <div class="progress flex-grow-1" style="height: 20px;">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: {{ overall_progress }}%;" aria-valuenow="{{ overall_progress }}" aria-valuemin="0" aria-valuemax="100">{{ overall_progress }}%</div>
-                </div>
-            </div>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Course Management</h1>
+        <div>
+            <button class="btn btn-primary me-2" id="quickAddModuleBtn">Add new Module</button>
+            <a href="{{ url_for('index') }}" class="btn btn-outline-primary">Home</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Logout</a>
         </div>
     </div>
 
-    <!-- Main Modules Accordion -->
-    <div class="accordion" id="modulesAccordion">
+    <div id="modulesList">
         {% for module in modules %}
-        <div class="card mb-2 shadow-sm">
-            
-            <!-- LOCKED MODULE STATE -->
-            {% if module.order > current_user.current_module_order %}
-            <div class="card-header bg-light" id="headingLocked{{ module.id }}">
-                <h2 class="mb-0">
-                    <button class="btn btn-link btn-block text-left text-muted disabled" type="button" style="text-decoration: none;">
-                        <i class="fas fa-lock mr-2"></i>
-                        {{ module.title }}
-                    </button>
-                </h2>
-            </div>
-
-            <!-- UNLOCKED (OR CURRENT) MODULE STATE -->
-            {% else %}
-            <div class="card-header" id="heading{{ module.id }}">
-                <h2 class="mb-0">
-                    <button class="btn btn-link btn-block text-left font-weight-bold" type="button" data-toggle="collapse" data-target="#collapse{{ module.id }}" aria-expanded="{% if module.order == current_user.current_module_order %}true{% else %}false{% endif %}" aria-controls="collapse{{ module.id }}" style="text-decoration: none;">
-                        <span class="text-secondary mr-2">Module {{ module.order }}</span>
-                        {{ module.title }}
-                    </button>
-                </h2>
-                <!-- Module-specific Progress Bar -->
-                <div class="progress mt-2" style="height: 5px;">
-                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ module_progress_data[module.id] }}%;" aria-valuenow="{{ module_progress_data[module.id] }}" aria-valuemin="0" aria-valuemax="100"></div>
-                </div>
-            </div>
-
-            <div id="collapse{{ module.id }}" class="collapse {% if module.order == current_user.current_module_order %}show{% endif %}" aria-labelledby="heading{{ module.id }}" data-parent="#modulesAccordion">
-                <div class="card-body">
-                    {% if module.submodules.all() %}
-                        {% for submodule in module.submodules %}
-                        <div class="submodule-section mb-3">
-                            <h5 class="font-weight-bold border-bottom pb-2 mb-3">{{ submodule.title }}</h5>
-                            <ul class="list-group list-group-flush">
-                                {% for item in submodule.items %}
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <!-- Completion Status Icon -->
-                                        {% if user_progress_map.get(item.id) == 'completed' %}
-                                            <i class="fas fa-check-circle text-success fa-lg mr-3" title="Completed"></i>
-                                        {% else %}
-                                             <i class="far fa-circle text-muted fa-lg mr-3" title="Not Started"></i>
-                                        {% endif %}
-                                        
-                                        <!-- Content Type Icon & Title Link -->
-                                        {% if item.content_object %}
-                                            <a href="
-                                                {% if item.content_type == 'quiz' %}
-                                                    {{ url_for('quiz_viewer', quiz_id=item.content_id) }}
-                                                {% elif item.content_type == 'lab' %}
-                                                    {{ url_for('start_lab', lab_id=item.content_id) }}
-                                                {% elif item.content_type == 'session' %}
-                                                    {{ url_for('session_viewer', session_id=item.content_id) }}
-                                                {% endif %}
-                                            " class="text-dark font-weight-bold">
-                                                
-                                                {% if item.content_type == 'quiz' %}
-                                                    <i class="fas fa-question-circle text-primary mr-2" title="Quiz"></i>
-                                                {% elif item.content_type == 'lab' %}
-                                                    <i class="fas fa-flask text-info mr-2" title="Lab"></i>
-                                                {% elif item.content_type == 'session' %}
-                                                    <i class="fas fa-keyboard text-warning mr-2" title="Practical Session"></i>
-                                                {% endif %}
-                                                
-                                                {{ item.content_object.title }}
-                                            </a>
-                                        {% else %}
-                                             <span class="text-danger">Content item not found.</span>
-                                        {% endif %}
-                                    </div>
-                                    <span class="badge badge-light badge-pill text-capitalize">{{ item.content_type }}</span>
-                                </li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <p class="text-muted">This module has no content yet.</p>
-                    {% endif %}
-                </div>
-            </div>
-            {% endif %}
-        </div>
+            {{ render_module(module) }}
         {% endfor %}
     </div>
 </div>
+
+
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
+<script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const contentTypeSelect = document.getElementById('contentType');
-    const contentDropdowns = document.querySelectorAll('.content-dropdown');
-    const form = document.getElementById('addContentForm');
+    document.addEventListener('DOMContentLoaded', function() {
+        const quickAddModuleBtn = document.getElementById('quickAddModuleBtn');
 
-    contentTypeSelect.addEventListener('change', function() {
-        // Hide all dropdowns and remove their 'name' attribute
-        contentDropdowns.forEach(dropdown => {
-            dropdown.style.display = 'none';
-            dropdown.disabled = true;
-            dropdown.removeAttribute('name');
+        if (quickAddModuleBtn) {
+            quickAddModuleBtn.addEventListener('click', function() {
+                const moduleTitle = prompt('Enter the title for the new module:');
+                if (moduleTitle === null || moduleTitle.trim() === '') {
+                    alert('Module title cannot be empty.');
+                    return;
+                }
+
+                fetch('/admin/module/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ title: moduleTitle })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('Module created successfully!');
+                        window.location.reload(); // Reload to show the new module
+                    } else {
+                        alert('Error creating module: ' + data.message);
+                    } 
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while creating the module.');
+                });
+            });
+        }
+
+        // Handle collapse icon rotation
+        document.querySelectorAll('.submodule-card').forEach(card => {
+            const collapseElement = card.querySelector('.collapse');
+            const collapseIcon = card.querySelector('.collapse-icon');
+
+            if (collapseElement && collapseIcon) {
+                collapseElement.addEventListener('show.bs.collapse', function () {
+                    collapseIcon.classList.remove('fa-chevron-right');
+                    collapseIcon.classList.add('fa-chevron-down');
+                });
+
+                collapseElement.addEventListener('hide.bs.collapse', function () {
+                    collapseIcon.classList.remove('fa-chevron-down');
+                    collapseIcon.classList.add('fa-chevron-right');
+                });
+
+                // Initial state: if it's shown, ensure icon is down
+                if (collapseElement.classList.contains('show')) {
+                    collapseIcon.classList.remove('fa-chevron-right');
+                    collapseIcon.classList.add('fa-chevron-down');
+                } else {
+                    collapseIcon.classList.remove('fa-chevron-down');
+                    collapseIcon.classList.add('fa-chevron-right');
+                }
+            }
         });
-
-        // Get the selected type
-        const selectedType = this.value;
-        if (selectedType) {
-            // Find the target dropdown (e.g., 'quiz' -> '#quizSelect')
-            const targetDropdown = document.getElementById(selectedType + 'Select');
-            if (targetDropdown) {
-                targetDropdown.style.display = 'block';
-                targetDropdown.disabled = false;
-                targetDropdown.setAttribute('name', 'content_id'); // THIS IS KEY
-            }
-        }
     });
-
-    // Optional: Add form submission validation to ensure a content item is selected
-    form.addEventListener('submit', function(event) {
-        const selectedType = contentTypeSelect.value;
-        if (selectedType) {
-            const activeDropdown = document.querySelector('.content-dropdown[name="content_id"]');
-            if (activeDropdown && !activeDropdown.value) {
-                alert('Please select a specific content item before adding.');
-                event.preventDefault(); // Stop the form from submitting
-            }
-        }
-    });
-});
 </script>
 {% endblock %}

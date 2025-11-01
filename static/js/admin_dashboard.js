@@ -218,6 +218,8 @@ document.querySelectorAll('.create-submodule-form').forEach(form => {
             return;
         }
 
+        console.log('Creating submodule with:', { title, moduleId, parentId });
+
         try {
             const response = await fetch('/admin/submodule/create', {
                 method: 'POST',
@@ -353,6 +355,8 @@ document.querySelectorAll('.create-content-form').forEach(form => {
         const submoduleId = this.dataset.submoduleId;
         const contentType = this.querySelector('select[name="content_type"]').value;
         const contentId = this.querySelector('select[name="content_id"]').value;
+
+        console.log('Creating content item with:', { submoduleId, contentType, contentId });
 
         try {
             const response = await fetch('/admin/item/create', {
