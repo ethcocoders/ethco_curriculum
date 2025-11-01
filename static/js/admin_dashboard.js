@@ -45,40 +45,41 @@ function initializeSortable() {
     });
 }
 
-// ===================================
-// MODULE OPERATIONS
-// ===================================
 
-// Create Module
-document.getElementById('createModuleBtn')?.addEventListener('click', function() {
-    const modal = new bootstrap.Modal(document.getElementById('createModuleModal'));
-    modal.show();
-});
+    initializeSortable();
 
-document.getElementById('createModuleForm')?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const title = document.getElementById('moduleTitle').value;
 
-    try {
-        const response = await fetch('/admin/module/create', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ title: title })
-        });
 
-        const data = await response.json();
-        if (data.status === 'success') {
-            location.reload();
-        } else {
-            alert('Error: ' + data.message);
+    // Create Module
+    document.getElementById('createModuleBtn')?.addEventListener('click', function() {
+        const modal = new bootstrap.Modal(document.getElementById('createModuleModal'));
+        modal.show();
+    });
+
+    document.getElementById('createModuleForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const title = document.getElementById('moduleTitle').value;
+
+        try {
+            const response = await fetch('/admin/module/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ title: title })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while creating the module.');
         }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('An error occurred while creating the module.');
-    }
-});
+    });
 
 // Rename Module
 function renameModule(moduleId) {
@@ -203,26 +204,18 @@ function reorderModules() {
 // SUBMODULE OPERATIONS
 // ===================================
 
-document.querySelectorAll('.module-title-link, .submodule-title-link').forEach(link => {
-    link.addEventListener('click', function(e) {
-        e.preventDefault();
-        const cardBody = this.closest('.card').querySelector('.card-body');
-        cardBody.style.display = cardBody.style.display === 'none' ? 'block' : 'none';
-    });
-});
-
+// Create Submodule
 document.querySelectorAll('.create-submodule-form').forEach(form => {
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
+        const titleInput = this.querySelector('input[type="text"]');
+        const title = titleInput.value.trim();
         const moduleId = this.dataset.moduleId;
         const parentId = this.dataset.parentId;
-        const title = this.querySelector('input[type="text"]').value;
 
-        const body = { title: title };
-        if (parentId) {
-            body.parent_id = parentId;
-        } else {
-            body.module_id = moduleId;
+        if (!title) {
+            alert('Submodule title cannot be empty.');
+            return;
         }
 
         try {
@@ -231,7 +224,7 @@ document.querySelectorAll('.create-submodule-form').forEach(form => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(body)
+                body: JSON.stringify({ title, module_id: moduleId, parent_id: parentId })
             });
 
             const data = await response.json();
@@ -246,6 +239,8 @@ document.querySelectorAll('.create-submodule-form').forEach(form => {
         }
     });
 });
+
+
 
 // Rename Submodule
 function renameSubmodule(submoduleId) {

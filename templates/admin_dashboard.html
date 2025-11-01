@@ -8,7 +8,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Course Management</h1>
         <div>
-            <button class="btn btn-primary" id="createModuleBtn">Create New Module</button>
+            <button class="btn btn-primary me-2" id="quickAddModuleBtn">Add new Module</button>
             <a href="{{ url_for('index') }}" class="btn btn-outline-primary">Home</a>
             <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Logout</a>
         </div>
@@ -21,94 +21,46 @@
     </div>
 </div>
 
-<!-- Create Module Modal -->
-<div class="modal fade" id="createModuleModal" tabindex="-1" aria-labelledby="createModuleModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="createModuleModalLabel">Create New Module</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="createModuleForm">
-                    <div class="mb-3">
-                        <label for="moduleTitle" class="form-label">Module Title</label>
-                        <input type="text" class="form-control" id="moduleTitle" required>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="submit" class="btn btn-primary" form="createModuleForm">Create</button>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- Create Submodule Modal -->
-<div class="modal fade" id="createSubmoduleModal" tabindex="-1" aria-labelledby="createSubmoduleModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="createSubmoduleModalLabel">Create New Submodule</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="createSubmoduleForm">
-                    <input type="hidden" id="submoduleModuleId" name="module_id">
-                    <input type="hidden" id="submoduleParentId" name="parent_id">
-                    <div class="mb-3">
-                        <label for="submoduleTitle" class="form-label">Submodule Title</label>
-                        <input type="text" class="form-control" id="submoduleTitle" required>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="submit" class="btn btn-primary" form="createSubmoduleForm">Create</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Create Content Item Modal -->
-<div class="modal fade" id="createContentModal" tabindex="-1" aria-labelledby="createContentModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="createContentModalLabel">Add Content to Submodule</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="createContentForm">
-                    <input type="hidden" id="contentSubmoduleId" name="submodule_id">
-                    <div class="mb-3">
-                        <label for="contentType" class="form-label">Content Type</label>
-                        <select class="form-select" id="contentType" name="content_type" required>
-                            <option value="">-- Select Type --</option>
-                            <option value="quiz">Quiz</option>
-                            <option value="lab">Lab</option>
-                            <option value="session">Session</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="contentId" class="form-label">Content</label>
-                        <select class="form-select" id="contentId" name="content_id" required>
-                            <option value="">-- Select Content --</option>
-                        </select>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="submit" class="btn btn-primary" form="createContentForm">Add</button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
 <script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const quickAddModuleBtn = document.getElementById('quickAddModuleBtn');
+
+        if (quickAddModuleBtn) {
+            quickAddModuleBtn.addEventListener('click', function() {
+                const moduleTitle = prompt('Enter the title for the new module:');
+                if (moduleTitle === null || moduleTitle.trim() === '') {
+                    alert('Module title cannot be empty.');
+                    return;
+                }
+
+                fetch('/admin/module/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ title: moduleTitle })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('Module created successfully!');
+                        window.location.reload(); // Reload to show the new module
+                    } else {
+                        alert('Error creating module: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while creating the module.');
+                });
+            });
+        }
+    });
+</script>
 {% endblock %}

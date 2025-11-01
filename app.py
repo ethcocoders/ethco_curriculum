@@ -6,6 +6,7 @@ from flask import request, jsonify
 from bs4 import BeautifulSoup
 
 # ... (rest of your imports) ...
+import json
 from flask import Flask, render_template, url_for, flash, redirect, jsonify, request # <-- ADD request
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
@@ -35,8 +36,32 @@ login_manager.login_message_category = 'info'
 migrate = Migrate(app, db)
 
 # ===================================
-# 4. HELPER FUNCTIONS  <-- PASTE THE PARSER FUNCTION HERE
+# 4. HELPER FUNCTIONS
 # ===================================
+
+def get_user_progress_map(user_id):
+    """
+    Returns a dictionary mapping module_item_id to its status for a given user.
+    """
+    progress_records = UserProgress.query.filter_by(user_id=user_id).all()
+    return {record.module_item_id: record.status for record in progress_records}
+
+def calculate_module_progress(module, user_progress_map):
+    """
+    Calculates the completion percentage for a given module based on user progress.
+    """
+    total_items = 0
+    completed_items = 0
+
+    for submodule in module.submodules:
+        for item in submodule.items:
+            total_items += 1
+            if user_progress_map.get(item.id) == 'completed':
+                completed_items += 1
+    
+    if total_items == 0:
+        return 0
+    return round((completed_items / total_items) * 100)
 
 def parse_quiz_markdown(markdown_text):
     """
@@ -1061,6 +1086,34 @@ def admin_dashboard():
 
 # app.py
 
+@app.route("/admin/module/<int:module_id>/manage")
+@login_required
+def admin_manage_module_content(module_id):
+    if current_user.role != 'admin':
+        flash('Permission denied.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    module = Module.query.get_or_404(module_id)
+    
+    return render_template(
+        'admin_module_detail.html', 
+        item=module
+    )
+
+@app.route("/admin/submodule/<int:submodule_id>/manage")
+@login_required
+def admin_manage_submodule_content(submodule_id):
+    if current_user.role != 'admin':
+        flash('Permission denied.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    submodule = Submodule.query.get_or_404(submodule_id)
+    
+    return render_template(
+        'admin_module_detail.html', 
+        item=submodule
+    )
+
 @app.route("/admin/quizzes", methods=['GET', 'POST'])
 @login_required
 def admin_quizzes():
@@ -1527,26 +1580,46 @@ def move_content_item(item_id, direction):
 @app.route("/admin/module/create", methods=['POST'])
 @login_required
 def create_module():
+    print("DEBUG: Entering create_module function.")
+    print(f"DEBUG: Request method: {request.method}")
+    print(f"DEBUG: Request headers: {request.headers}")
+    print(f"DEBUG: Is JSON request: {request.is_json}")
+
     if current_user.role != 'admin':
+        print(f"DEBUG: Permission denied for create_module. User ID: {current_user.id}, Role: {current_user.role}")
         return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
-    
+    print(f"DEBUG: User {current_user.id} with role {current_user.role} is authorized.")
+
+    if not request.is_json:
+        print("ERROR: Request is not JSON for create_module.")
+        return jsonify({'status': 'error', 'message': 'Content-Type must be application/json'}), 400
+
     data = request.get_json()
+    print(f"DEBUG: Received JSON data for create_module: {data}")
     title = data.get('title', '').strip()
-    
+    print(f"DEBUG: Extracted title: '{title}'")
+
     if not title:
+        print("DEBUG: Title is empty for create_module.")
         return jsonify({'status': 'error', 'message': 'Title cannot be empty'}), 400
     
     try:
+        print("DEBUG: Attempting to find last module for order calculation.")
         last_module = Module.query.order_by(Module.order.desc()).first()
         new_order = last_module.order + 1 if last_module else 1
+        print(f"DEBUG: Calculated new order: {new_order}")
         
         new_module = Module(title=title, order=new_order, is_published=False)
         db.session.add(new_module)
+        print(f"DEBUG: Added new module to session: {new_module}")
         db.session.commit()
-        
+        print(f"DEBUG: Module \"{title}\" created successfully with ID: {new_module.id} and committed to DB.")
         return jsonify({'status': 'success', 'message': 'Module created', 'module_id': new_module.id})
     except Exception as e:
         db.session.rollback()
+        print(f"ERROR: Exception during create_module: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route("/admin/module/<int:module_id>/toggle-publish", methods=['POST'])

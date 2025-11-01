@@ -3,7 +3,7 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <div>
             <i class="fas fa-bars module-drag-handle" style="cursor: grab; margin-right: 10px;"></i>
-            <a href="#" class="module-title-link" data-module-id="{{ module.id }}">{{ module.title }}</a>
+            <a href="{{ url_for('admin_manage_module_content', module_id=module.id) }}">{{ module.title }}</a>
             {% if module.is_published %}
             <span class="badge badge-success">Published</span>
             {% else %}
@@ -19,22 +19,14 @@
             <button class="btn btn-sm btn-outline-danger" onclick="deleteModule({{ module.id }})">Delete</button>
         </div>
     </div>
-    <div class="card-body" style="display: none;">
-        <div class="submodules-list" data-module-id="{{ module.id }}">
+    <div class="card-body">
+        <div class="submodules-list" data-module-id="{{ module.id }}" data-parent-id="">
             {% for submodule in module.submodules %}
                 {% if not submodule.parent_id %}
                     {{ render_submodule(submodule) }}
                 {% endif %}
             {% endfor %}
         </div>
-        <hr>
-        <h5>Create New Submodule</h5>
-        <form class="create-submodule-form" data-module-id="{{ module.id }}">
-            <div class="input-group mb-3">
-                <input type="text" class="form-control" placeholder="Submodule Title" required>
-                <button class="btn btn-primary" type="submit">Create</button>
-            </div>
-        </form>
     </div>
 </div>
 {% endmacro %}
@@ -44,7 +36,7 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <div>
             <i class="fas fa-bars submodule-drag-handle" style="cursor: grab; margin-right: 10px;"></i>
-            <a href="#" class="submodule-title-link" data-submodule-id="{{ submodule.id }}">{{ submodule.title }}</a>
+            <a href="{{ url_for('admin_manage_submodule_content', submodule_id=submodule.id) }}">{{ submodule.title }}</a>
         </div>
         <div>
             <button class="btn btn-sm btn-outline-primary" onclick="renameSubmodule({{ submodule.id }})">Rename</button>
@@ -52,7 +44,7 @@
             <button class="btn btn-sm btn-outline-danger" onclick="deleteSubmodule({{ submodule.id }})">Delete</button>
         </div>
     </div>
-    <div class="card-body" style="display: none;">
+    <div class="card-body">
         <ul class="list-group content-items-list" data-submodule-id="{{ submodule.id }}">
             {% for item in submodule.items %}
             <li class="list-group-item content-item" data-item-id="{{ item.id }}">
@@ -68,35 +60,12 @@
             </li>
             {% endfor %}
         </ul>
+        {# Recursively render children submodules #}
         <div class="submodules-list" data-module-id="{{ submodule.module_id }}" data-parent-id="{{ submodule.id }}">
             {% for child in submodule.children %}
-            {{ render_submodule(child) }}
+                {{ render_submodule(child) }}
             {% endfor %}
         </div>
-        <hr>
-        <h5>Create New Submodule</h5>
-        <form class="create-submodule-form" data-parent-id="{{ submodule.id }}">
-            <div class="input-group mb-3">
-                <input type="text" class="form-control" placeholder="Submodule Title" required>
-                <button class="btn btn-primary" type="submit">Create</button>
-            </div>
-        </form>
-        <hr>
-        <h5>Add Content</h5>
-        <form class="create-content-form" data-submodule-id="{{ submodule.id }}">
-            <div class="input-group mb-3">
-                <select class="form-select" name="content_type" required>
-                    <option value="">-- Select Type --</option>
-                    <option value="quiz">Quiz</option>
-                    <option value="lab">Lab</option>
-                    <option value="session">Session</option>
-                </select>
-                <select class="form-select" name="content_id" required>
-                    <option value="">-- Select Content --</option>
-                </select>
-                <button class="btn btn-primary" type="submit">Add</button>
-            </div>
-        </form>
     </div>
 </div>
 {% endmacro %}
