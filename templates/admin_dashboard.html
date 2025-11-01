@@ -1,262 +1,114 @@
 {% extends "base.html" %}
+{% from "_course_structure.html" import render_module %}
 
 {% block title %}Admin Dashboard - EthCo Learning{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/admin_dashboard.css') }}">
-<div class="admin-container">
-    <!-- Header Section -->
-    <div class="admin-header">
-        <div class="admin-header-content">
-            <h1 class="admin-title">
-                <i class="fas fa-cog"></i> Admin Dashboard
-            </h1>
-            <p class="admin-subtitle">Manage your curriculum modules, submodules, and content</p>
-        </div>
-        <div class="admin-header-actions">
-            <a href="{{ url_for('index') }}" class="btn btn-outline-light">
-                <i class="fas fa-home"></i> Home
-            </a>
-            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
-                <i class="fas fa-sign-out-alt"></i> Logout
-            </a>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Course Management</h1>
+        <div>
+            <button class="btn btn-primary" id="createModuleBtn">Create New Module</button>
+            <a href="{{ url_for('index') }}" class="btn btn-outline-primary">Home</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Logout</a>
         </div>
     </div>
 
-    <!-- Main Content Area -->
-    <div class="admin-main">
-        <!-- Modules Section -->
-        <div class="modules-section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <i class="fas fa-book"></i> Course Modules
-                </h2>
-                <button class="btn btn-create-module" id="createModuleBtn">
-                    <i class="fas fa-plus-circle"></i> Create Module
-                </button>
-            </div>
-
-            <div class="modules-list" id="modulesList">
-                {% if modules %}
-                    {% for module in modules %}
-                    <div class="module-card" data-module-id="{{ module.id }}" draggable="true">
-                        <div class="module-header">
-                            <div class="module-drag-handle">
-                                <i class="fas fa-grip-vertical"></i>
-                            </div>
-                            <div class="module-info">
-                                <h3 class="module-title" data-editable="true">{{ module.title }}</h3>
-                                <p class="module-meta">
-                                    <span class="badge badge-info">{{ module.submodules.count() }} Submodules</span>
-                                    <span class="badge" style="background-color: {% if module.is_published %}#00f2c3{% else %}#666{% endif %}">
-                                        {% if module.is_published %}Published{% else %}Draft{% endif %}
-                                    </span>
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="module-actions">
-                            <button class="btn-icon btn-edit-module" title="Edit Module">
-                                <i class="fas fa-pencil-alt"></i>
-                            </button>
-                            <button class="btn-icon btn-toggle-publish" title="Toggle Publish">
-                                <i class="fas fa-{% if module.is_published %}eye-slash{% else %}eye{% endif %}"></i>
-                            </button>
-                            <div class="dropdown">
-                                <button class="btn-icon dropdown-toggle" data-bs-toggle="dropdown">
-                                    <i class="fas fa-ellipsis-v"></i>
-                                </button>
-                                <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item" href="#" onclick="renameModule({{ module.id }})">Rename</a></li>
-                                    <li><a class="dropdown-item" href="#" onclick="duplicateModule({{ module.id }})">Duplicate</a></li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteModule({{ module.id }})">Delete</a></li>
-                                </ul>
-                            </div>
-                        </div>
-
-                        <!-- Submodules Section -->
-                        <div class="submodules-container" data-module-id="{{ module.id }}">
-                            <div class="submodules-header">
-                                <h4 class="submodules-title">Submodules</h4>
-                                <button class="btn-create-submodule" data-module-id="{{ module.id }}">
-                                    <i class="fas fa-plus"></i> Add Submodule
-                                </button>
-                            </div>
-
-                            <div class="submodules-list" data-module-id="{{ module.id }}">
-                                {% if module.submodules %}
-                                    {% for submodule in module.submodules %}
-                                    <div class="submodule-card" data-submodule-id="{{ submodule.id }}" draggable="true">
-                                        <div class="submodule-header">
-                                            <i class="fas fa-grip-vertical submodule-drag-handle"></i>
-                                            <h5 class="submodule-title">{{ submodule.title }}</h5>
-                                            <span class="badge badge-secondary">{{ submodule.items.count() }} Items</span>
-                                        </div>
-
-                                        <div class="submodule-actions">
-                                            <button class="btn-icon btn-edit-submodule" data-submodule-id="{{ submodule.id }}">
-                                                <i class="fas fa-pencil-alt"></i>
-                                            </button>
-                                            <div class="dropdown">
-                                                <button class="btn-icon dropdown-toggle" data-bs-toggle="dropdown">
-                                                    <i class="fas fa-ellipsis-v"></i>
-                                                </button>
-                                                <ul class="dropdown-menu">
-                                                    <li><a class="dropdown-item" href="#" onclick="renameSubmodule({{ submodule.id }})">Rename</a></li>
-                                                    <li><a class="dropdown-item" href="#" onclick="duplicateSubmodule({{ submodule.id }})">Duplicate</a></li>
-                                                    <li><hr class="dropdown-divider"></li>
-                                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteSubmodule({{ submodule.id }})">Delete</a></li>
-                                                </ul>
-                                            </div>
-                                        </div>
-
-                                        <!-- Content Items Section -->
-                                        <div class="content-items-container">
-                                            <div class="content-items-header">
-                                                <h6 class="content-items-title">Content Items</h6>
-                                                <button class="btn-create-content" data-submodule-id="{{ submodule.id }}">
-                                                    <i class="fas fa-plus-circle"></i>
-                                                </button>
-                                            </div>
-
-                                            <div class="content-items-list" data-submodule-id="{{ submodule.id }}">
-                                                {% if submodule.items %}
-                                                    {% for item in submodule.items %}
-                                                    <div class="content-item" data-item-id="{{ item.id }}" draggable="true">
-                                                        <div class="content-item-header">
-                                                            <i class="fas fa-grip-vertical content-drag-handle"></i>
-                                                            <span class="content-type-badge" style="background-color: {% if item.content_type == 'quiz' %}#ff6b6b{% elif item.content_type == 'lab' %}#4ecdc4{% else %}#45b7d1{% endif %}">
-                                                                {{ item.content_type|upper }}
-                                                            </span>
-                                                            <span class="content-title">{{ item.content_object.title if item.content_object else 'Unknown' }}</span>
-                                                        </div>
-                                                        <div class="content-item-actions">
-                                                            <button class="btn-icon btn-edit-content" data-item-id="{{ item.id }}">
-                                                                <i class="fas fa-pencil-alt"></i>
-                                                            </button>
-                                                            <button class="btn-icon btn-delete-content" data-item-id="{{ item.id }}">
-                                                                <i class="fas fa-trash-alt"></i>
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    {% endfor %}
-                                                {% else %}
-                                                <p class="empty-state">No content items yet</p>
-                                                {% endif %}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                {% else %}
-                                <p class="empty-state">No submodules yet</p>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                <div class="empty-state-container">
-                    <i class="fas fa-inbox"></i>
-                    <p>No modules yet. Create your first module to get started!</p>
-                </div>
-                {% endif %}
-            </div>
-        </div>
+    <div id="modulesList">
+        {% for module in modules %}
+            {{ render_module(module) }}
+        {% endfor %}
     </div>
 </div>
 
 <!-- Create Module Modal -->
-<div class="modal fade" id="createModuleModal" tabindex="-1">
+<div class="modal fade" id="createModuleModal" tabindex="-1" aria-labelledby="createModuleModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Create New Module</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="createModuleModalLabel">Create New Module</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="createModuleForm">
-                <div class="modal-body">
-                    <div class="form-group">
+            <div class="modal-body">
+                <form id="createModuleForm">
+                    <div class="mb-3">
                         <label for="moduleTitle" class="form-label">Module Title</label>
-                        <input type="text" class="form-control" id="moduleTitle" placeholder="Enter module title" required>
+                        <input type="text" class="form-control" id="moduleTitle" required>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create Module</button>
-                </div>
-            </form>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-primary" form="createModuleForm">Create</button>
+            </div>
         </div>
     </div>
 </div>
 
 <!-- Create Submodule Modal -->
-<div class="modal fade" id="createSubmoduleModal" tabindex="-1">
+<div class="modal fade" id="createSubmoduleModal" tabindex="-1" aria-labelledby="createSubmoduleModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Create New Submodule</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="createSubmoduleModalLabel">Create New Submodule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="createSubmoduleForm">
-                <div class="modal-body">
-                    <input type="hidden" id="submoduleModuleId">
-                    <div class="form-group">
+            <div class="modal-body">
+                <form id="createSubmoduleForm">
+                    <input type="hidden" id="submoduleModuleId" name="module_id">
+                    <input type="hidden" id="submoduleParentId" name="parent_id">
+                    <div class="mb-3">
                         <label for="submoduleTitle" class="form-label">Submodule Title</label>
-                        <input type="text" class="form-control" id="submoduleTitle" placeholder="Enter submodule title" required>
+                        <input type="text" class="form-control" id="submoduleTitle" required>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create Submodule</button>
-                </div>
-            </form>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-primary" form="createSubmoduleForm">Create</button>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Create Content Modal -->
-<div class="modal fade" id="createContentModal" tabindex="-1">
+<!-- Create Content Item Modal -->
+<div class="modal fade" id="createContentModal" tabindex="-1" aria-labelledby="createContentModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Content Item</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="createContentModalLabel">Add Content to Submodule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="createContentForm">
-                <div class="modal-body">
-                    <input type="hidden" id="contentSubmoduleId">
-                    <div class="form-group">
+            <div class="modal-body">
+                <form id="createContentForm">
+                    <input type="hidden" id="contentSubmoduleId" name="submodule_id">
+                    <div class="mb-3">
                         <label for="contentType" class="form-label">Content Type</label>
-                        <select class="form-control" id="contentType" required>
-                            <option value="">Select a type...</option>
+                        <select class="form-select" id="contentType" name="content_type" required>
+                            <option value="">-- Select Type --</option>
                             <option value="quiz">Quiz</option>
                             <option value="lab">Lab</option>
-                            <option value="session">Practical Session</option>
+                            <option value="session">Session</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="contentId" class="form-label">Select Content</label>
-                        <select class="form-control" id="contentId" required>
-                            <option value="">Select content...</option>
+                    <div class="mb-3">
+                        <label for="contentId" class="form-label">Content</label>
+                        <select class="form-select" id="contentId" name="content_id" required>
+                            <option value="">-- Select Content --</option>
                         </select>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Add Content</button>
-                </div>
-            </form>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-primary" form="createContentForm">Add</button>
+            </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
 <script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
-<style>
-    @import url('{{ url_for("static", filename="css/admin_dashboard.css") }}');
-</style>
 {% endblock %}

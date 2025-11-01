@@ -25,7 +25,8 @@ function initializeSortable() {
             handle: '.submodule-drag-handle',
             onEnd: function(evt) {
                 const moduleId = submodulesList.dataset.moduleId;
-                reorderSubmodules(moduleId);
+                const parentId = submodulesList.dataset.parentId;
+                reorderSubmodules(moduleId, parentId);
             }
         });
     });
@@ -83,12 +84,12 @@ document.getElementById('createModuleForm')?.addEventListener('submit', async fu
 function renameModule(moduleId) {
     const newTitle = prompt('Enter new module title:');
     if (newTitle && newTitle.trim()) {
-        const formData = new FormData();
-        formData.append('new_module_title', newTitle);
-
         fetch(`/admin/module/${moduleId}/rename`, {
             method: 'POST',
-            body: formData
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ new_title: newTitle })
         })
         .then(response => response.json())
         .then(data => {
@@ -202,53 +203,60 @@ function reorderModules() {
 // SUBMODULE OPERATIONS
 // ===================================
 
-// Create Submodule
-document.querySelectorAll('.btn-create-submodule').forEach(btn => {
-    btn.addEventListener('click', function(e) {
+document.querySelectorAll('.module-title-link, .submodule-title-link').forEach(link => {
+    link.addEventListener('click', function(e) {
         e.preventDefault();
-        const moduleId = this.dataset.moduleId;
-        document.getElementById('submoduleModuleId').value = moduleId;
-        const modal = new bootstrap.Modal(document.getElementById('createSubmoduleModal'));
-        modal.show();
+        const cardBody = this.closest('.card').querySelector('.card-body');
+        cardBody.style.display = cardBody.style.display === 'none' ? 'block' : 'none';
     });
 });
 
-document.getElementById('createSubmoduleForm')?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const moduleId = document.getElementById('submoduleModuleId').value;
-    const title = document.getElementById('submoduleTitle').value;
+document.querySelectorAll('.create-submodule-form').forEach(form => {
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const moduleId = this.dataset.moduleId;
+        const parentId = this.dataset.parentId;
+        const title = this.querySelector('input[type="text"]').value;
 
-    try {
-        const response = await fetch('/admin/submodule/create', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ module_id: moduleId, title: title })
-        });
-
-        const data = await response.json();
-        if (data.status === 'success') {
-            location.reload();
+        const body = { title: title };
+        if (parentId) {
+            body.parent_id = parentId;
         } else {
-            alert('Error: ' + data.message);
+            body.module_id = moduleId;
         }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('An error occurred while creating the submodule.');
-    }
+
+        try {
+            const response = await fetch('/admin/submodule/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body)
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while creating the submodule.');
+        }
+    });
 });
 
 // Rename Submodule
 function renameSubmodule(submoduleId) {
     const newTitle = prompt('Enter new submodule title:');
     if (newTitle && newTitle.trim()) {
-        const formData = new FormData();
-        formData.append('new_submodule_title', newTitle);
-
         fetch(`/admin/submodule/${submoduleId}/rename`, {
             method: 'POST',
-            body: formData
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ new_title: newTitle })
         })
         .then(response => response.json())
         .then(data => {
@@ -308,16 +316,23 @@ function duplicateSubmodule(submoduleId) {
 }
 
 // Reorder Submodules
-function reorderSubmodules(moduleId) {
-    const submodulesList = document.querySelector(`.submodules-list[data-module-id="${moduleId}"]`);
+function reorderSubmodules(moduleId, parentId) {
+    const submodulesList = document.querySelector(`.submodules-list[data-module-id="${moduleId}"][data-parent-id="${parentId}"]`);
     const newOrder = Array.from(submodulesList.querySelectorAll('.submodule-card')).map(card => card.dataset.submoduleId);
+
+    const body = { new_order: newOrder };
+    if (parentId) {
+        body.parent_id = parentId;
+    } else {
+        body.module_id = moduleId;
+    }
 
     fetch('/admin/submodules/reorder', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ new_order: newOrder, module_id: moduleId })
+        body: JSON.stringify(body)
     })
     .then(response => response.json())
     .then(data => {
@@ -337,83 +352,71 @@ function reorderSubmodules(moduleId) {
 // CONTENT ITEM OPERATIONS
 // ===================================
 
-// Create Content Item
-document.querySelectorAll('.btn-create-content').forEach(btn => {
-    btn.addEventListener('click', async function(e) {
+document.querySelectorAll('.create-content-form').forEach(form => {
+    form.addEventListener('submit', async function(e) {
         e.preventDefault();
         const submoduleId = this.dataset.submoduleId;
-        document.getElementById('contentSubmoduleId').value = submoduleId;
+        const contentType = this.querySelector('select[name="content_type"]').value;
+        const contentId = this.querySelector('select[name="content_id"]').value;
 
-        // Load content types
-        const contentTypeSelect = document.getElementById('contentType');
-        contentTypeSelect.value = '';
+        try {
+            const response = await fetch('/admin/item/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    submodule_id: submoduleId,
+                    content_type: contentType,
+                    content_id: contentId
+                })
+            });
 
-        const modal = new bootstrap.Modal(document.getElementById('createContentModal'));
-        modal.show();
+            const data = await response.json();
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while adding the content item.');
+        }
     });
 });
 
 // Load content based on type
-document.getElementById('contentType')?.addEventListener('change', async function() {
-    const contentType = this.value;
-    const contentIdSelect = document.getElementById('contentId');
-    contentIdSelect.innerHTML = '<option value="">Loading...</option>';
+document.querySelectorAll('select[name="content_type"]').forEach(select => {
+    select.addEventListener('change', async function() {
+        const contentType = this.value;
+        const contentIdSelect = this.closest('form').querySelector('select[name="content_id"]');
+        contentIdSelect.innerHTML = '<option value="">Loading...</option>';
 
-    if (!contentType) {
-        contentIdSelect.innerHTML = '<option value="">Select content...</option>';
-        return;
-    }
-
-    try {
-        const response = await fetch(`/admin/content/list/${contentType}`);
-        const data = await response.json();
-
-        contentIdSelect.innerHTML = '<option value="">Select content...</option>';
-        if (data.items && data.items.length > 0) {
-            data.items.forEach(item => {
-                const option = document.createElement('option');
-                option.value = item.id;
-                option.textContent = item.title;
-                contentIdSelect.appendChild(option);
-            });
-        } else {
-            contentIdSelect.innerHTML = '<option value="">No ' + contentType + 's available</option>';
+        if (!contentType) {
+            contentIdSelect.innerHTML = '<option value="">Select content...</option>';
+            return;
         }
-    } catch (error) {
-        console.error('Error:', error);
-        contentIdSelect.innerHTML = '<option value="">Error loading content</option>';
-    }
-});
 
-document.getElementById('createContentForm')?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const submoduleId = document.getElementById('contentSubmoduleId').value;
-    const contentType = document.getElementById('contentType').value;
-    const contentId = document.getElementById('contentId').value;
+        try {
+            const response = await fetch(`/admin/content/list/${contentType}`);
+            const data = await response.json();
 
-    try {
-        const response = await fetch('/admin/item/create', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                submodule_id: submoduleId,
-                content_type: contentType,
-                content_id: contentId
-            })
-        });
-
-        const data = await response.json();
-        if (data.status === 'success') {
-            location.reload();
-        } else {
-            alert('Error: ' + data.message);
+            contentIdSelect.innerHTML = '<option value="">Select content...</option>';
+            if (data.items && data.items.length > 0) {
+                data.items.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.id;
+                    option.textContent = item.title;
+                    contentIdSelect.appendChild(option);
+                });
+            } else {
+                contentIdSelect.innerHTML = '<option value="">No ' + contentType + 's available</option>';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            contentIdSelect.innerHTML = '<option value="">Error loading content</option>';
         }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('An error occurred while adding the content item.');
-    }
+    });
 });
 
 // Delete Content Item

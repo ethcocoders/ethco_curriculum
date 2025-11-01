@@ -1,4 +1,3 @@
-# app.py (Monolithic Version)
 import click
 import os
 import datetime
@@ -322,40 +321,6 @@ def check_lab_step():
     else:
         return jsonify({'correct': False, 'message': 'Input does not match. Please check for typos and try again.'})
 
-@app.route("/api/lab/check_step", methods=['POST'])
-@login_required
-def check_step():
-    """API endpoint to validate a user's input for a lab step."""
-    data = request.get_json()
-    step_id = data.get('step_id')
-    user_input = data.get('user_input')
-
-    # Basic validation of the incoming request
-    if not step_id or user_input is None: # Check for None in case of empty string
-        return jsonify({'error': 'Missing step_id or user_input'}), 400
-
-    # Fetch the correct step from the database
-    step = LabStep.query.get(step_id)
-    if not step:
-        return jsonify({'error': 'Step not found'}), 404
-
-    # --- CORE VALIDATION LOGIC ---
-    # 1. Strip whitespace from the user's input.
-    cleaned_user_input = user_input.strip()
-    
-    # 2. Compare the cleaned user input with the stored match_text.
-    #    The match_text is already clean because our parser stripped it.
-    is_correct = (cleaned_user_input == step.match_text)
-    # --- END OF CORE LOGIC ---
-
-    if is_correct:
-        # Here, you would update the user's progress (LabProgress model)
-        # For now, we'll just return success.
-        # Logic to find/update LabProgress will be added in a later step.
-        return jsonify({'correct': True})
-    else:
-        return jsonify({'correct': False, 'message': 'Incorrect. Please try again.'})
-
 # app.py -> API ROUTES section
 
 @app.route("/api/session/validate", methods=['POST'])
@@ -543,6 +508,15 @@ class User(db.Model, UserMixin):
 # COURSE STRUCTURE MODELS
 # ===================================
 
+class Course(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    is_published = db.Column(db.Boolean, nullable=False, default=False)
+
+    def __repr__(self):
+        return f"Course('{self.title}')"
+
+
 class Module(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)
@@ -561,11 +535,17 @@ class Submodule(db.Model):
     order = db.Column(db.Integer, nullable=False)
     
     # Foreign Key to Module
-    module_id = db.Column(db.Integer, db.ForeignKey('module.id'), nullable=False)
+    module_id = db.Column(db.Integer, db.ForeignKey('module.id'), nullable=True)
+    
+    # Self-referential foreign key for nested submodules
+    parent_id = db.Column(db.Integer, db.ForeignKey('submodule.id'), nullable=True)
     
     # Relationships
     module = db.relationship('Module', back_populates='submodules')
     items = db.relationship('ModuleItem', back_populates='submodule', lazy='dynamic', cascade="all, delete-orphan", order_by='ModuleItem.order')
+    
+    # Relationship to parent submodule
+    parent = db.relationship('Submodule', remote_side=[id], backref=db.backref('children', lazy='dynamic'))
 
     def __repr__(self):
         return f"Submodule('{self.title}', Order: {self.order})"
@@ -730,14 +710,12 @@ class Requirement(db.Model):
 # 3. FORMS
 # ===================================
 # ... rest of your file
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
 
 
 # ===================================
 # 3. FORMS
 # ===================================
+
 
 class RegistrationForm(FlaskForm):
     username = StringField('Username', 
@@ -1010,13 +988,7 @@ def lab_complete(lab_id):
 # ===================================
 # 4. ROUTES
 # ===================================
-# ... your routes start here ...
-# app.py
-
-# --- Add this new import at the top of the file ---
-from flask import jsonify # We'll need this for our API later
-import json # To serialize data for the frontend
-# app.py
+# ... your routes start here ...# app.py
 
 @app.route("/quiz/<int:quiz_id>")
 @login_required
@@ -1083,13 +1055,9 @@ def admin_dashboard():
     modules = Module.query.order_by(Module.order.asc()).all()
 
     return render_template('admin_dashboard.html', modules=modules)
-    
-# Make sure this is defined at the top of your file
-QUIZ_CATEGORIES = {
-    'quiz': {'name': 'Quiz', 'questions': 4},
-    'test': {'name': 'Test', 'questions': 15},
-    'exam': {'name': 'Exam', 'questions': 50}
-}
+
+
+
 
 # app.py
 
@@ -1290,19 +1258,22 @@ def admin_course_builder():
 @login_required
 def delete_module(module_id):
     if current_user.role != 'admin':
-        return jsonify({'error': 'Permission denied'}), 403
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
     
     module_to_delete = Module.query.get_or_404(module_id)
     
-    # Re-order subsequent modules
-    subsequent_modules = Module.query.filter(Module.order > module_to_delete.order).all()
-    for mod in subsequent_modules:
-        mod.order -= 1
-        
-    db.session.delete(module_to_delete)
-    db.session.commit()
-    flash(f"Module '{module_to_delete.title}' and all its content have been deleted.", 'success')
-    return redirect(url_for('admin_course_builder'))
+    try:
+        # Re-order subsequent modules
+        subsequent_modules = Module.query.filter(Module.order > module_to_delete.order).all()
+        for mod in subsequent_modules:
+            mod.order -= 1
+            
+        db.session.delete(module_to_delete)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': f'Module \'{module_to_delete.title}\' deleted.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route("/admin/module/<int:module_id>/move/<direction>", methods=['POST'])
 @login_required
@@ -1398,23 +1369,26 @@ def edit_submodule(submodule_id):
 @login_required
 def delete_submodule(submodule_id):
     if current_user.role != 'admin':
-        return jsonify({'error': 'Permission denied'}), 403
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
     
     submodule_to_delete = Submodule.query.get_or_404(submodule_id)
-    module_id = submodule_to_delete.module_id # Save for redirect
+    module_id = submodule_to_delete.module_id
     
-    # Re-order subsequent submodules within the same parent module
-    subsequent_submodules = Submodule.query.filter(
-        Submodule.module_id == module_id, 
-        Submodule.order > submodule_to_delete.order
-    ).all()
-    for sub in subsequent_submodules:
-        sub.order -= 1
-        
-    db.session.delete(submodule_to_delete)
-    db.session.commit()
-    flash(f"Submodule '{submodule_to_delete.title}' has been deleted.", 'success')
-    return redirect(url_for('admin_manage_submodules', module_id=module_id))
+    try:
+        # Re-order subsequent submodules within the same parent module
+        subsequent_submodules = Submodule.query.filter(
+            Submodule.module_id == module_id, 
+            Submodule.order > submodule_to_delete.order
+        ).all()
+        for sub in subsequent_submodules:
+            sub.order -= 1
+            
+        db.session.delete(submodule_to_delete)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': f'Submodule \'{submodule_to_delete.title}\' deleted.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route("/admin/submodule/<int:submodule_id>/move/<direction>", methods=['POST'])
 @login_required
@@ -1501,22 +1475,25 @@ def admin_manage_content(submodule_id):
 @login_required
 def delete_content_item(item_id):
     if current_user.role != 'admin':
-        return jsonify({'error': 'Permission denied'}), 403
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
     
     item_to_delete = ModuleItem.query.get_or_404(item_id)
     submodule_id = item_to_delete.submodule_id
-
-    subsequent_items = ModuleItem.query.filter(
-        ModuleItem.submodule_id == submodule_id, 
-        ModuleItem.order > item_to_delete.order
-    ).all()
-    for item in subsequent_items:
-        item.order -= 1
-        
-    db.session.delete(item_to_delete)
-    db.session.commit()
-    flash('Content item removed from submodule.', 'success')
-    return redirect(url_for('admin_manage_content', submodule_id=submodule_id))
+    
+    try:
+        subsequent_items = ModuleItem.query.filter(
+            ModuleItem.submodule_id == submodule_id, 
+            ModuleItem.order > item_to_delete.order
+        ).all()
+        for item in subsequent_items:
+            item.order -= 1
+            
+        db.session.delete(item_to_delete)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Content item removed from submodule.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route("/admin/item/<int:item_id>/move/<direction>", methods=['POST'])
 @login_required
@@ -1635,23 +1612,33 @@ def duplicate_module(module_id):
 def create_submodule():
     if current_user.role != 'admin':
         return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
-    
+
     data = request.get_json()
-    module_id = data.get('module_id')
     title = data.get('title', '').strip()
-    
-    if not module_id or not title:
-        return jsonify({'status': 'error', 'message': 'Module ID and title are required'}), 400
-    
+    module_id = data.get('module_id')
+    parent_id = data.get('parent_id')
+
+    if not title:
+        return jsonify({'status': 'error', 'message': 'Title is required'}), 400
+
+    if not module_id and not parent_id:
+        return jsonify({'status': 'error', 'message': 'Either module_id or parent_id is required'}), 400
+
     try:
-        module = Module.query.get_or_404(module_id)
-        last_submodule = Submodule.query.filter_by(module_id=module_id).order_by(Submodule.order.desc()).first()
-        new_order = last_submodule.order + 1 if last_submodule else 1
-        
-        new_submodule = Submodule(title=title, order=new_order, module_id=module_id)
+        if parent_id:
+            parent_submodule = Submodule.query.get_or_404(parent_id)
+            last_submodule = Submodule.query.filter_by(parent_id=parent_id).order_by(Submodule.order.desc()).first()
+            new_order = last_submodule.order + 1 if last_submodule else 1
+            new_submodule = Submodule(title=title, order=new_order, parent_id=parent_id)
+        else:
+            module = Module.query.get_or_404(module_id)
+            last_submodule = Submodule.query.filter_by(module_id=module_id).order_by(Submodule.order.desc()).first()
+            new_order = last_submodule.order + 1 if last_submodule else 1
+            new_submodule = Submodule(title=title, order=new_order, module_id=module_id)
+
         db.session.add(new_submodule)
         db.session.commit()
-        
+
         return jsonify({'status': 'success', 'message': 'Submodule created', 'submodule_id': new_submodule.id})
     except Exception as e:
         db.session.rollback()
@@ -1778,18 +1765,29 @@ def reorder_modules():
 def reorder_submodules():
     if current_user.role != 'admin':
         return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
-    
+
     new_order_ids = request.json.get('new_order')
-    submodule_parent_id = request.json.get('parent_id') # Assuming parent_id is sent to scope the reorder
-    
-    if not new_order_ids or not submodule_parent_id:
-        return jsonify({'status': 'error', 'message': 'Missing new order or parent ID'}), 400
+    module_id = request.json.get('module_id')
+    parent_id = request.json.get('parent_id')
+
+    if not new_order_ids:
+        return jsonify({'status': 'error', 'message': 'No new order provided'}), 400
+
+    if not module_id and not parent_id:
+        return jsonify({'status': 'error', 'message': 'Either module_id or parent_id is required'}), 400
 
     try:
-        submodules = Submodule.query.filter(
-            Submodule.module_id == submodule_parent_id,
-            Submodule.id.in_(new_order_ids)
-        ).all()
+        if parent_id:
+            submodules = Submodule.query.filter(
+                Submodule.parent_id == parent_id,
+                Submodule.id.in_(new_order_ids)
+            ).all()
+        else:
+            submodules = Submodule.query.filter(
+                Submodule.module_id == module_id,
+                Submodule.id.in_(new_order_ids)
+            ).all()
+
         submodule_map = {str(submodule.id): submodule for submodule in submodules}
 
         for index, submodule_id in enumerate(new_order_ids):
@@ -1836,14 +1834,14 @@ def rename_module(module_id):
         return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
     
     module = Module.query.get_or_404(module_id)
-    new_title = request.form.get('new_module_title')
+    data = request.get_json()
+    new_title = data.get('new_title')
 
     if not new_title:
         return jsonify({'status': 'error', 'message': 'New title cannot be empty.'}), 400
     
     module.title = new_title
     db.session.commit()
-    flash(f"Module '{module.title}' renamed successfully.", 'success')
     return jsonify({'status': 'success', 'message': 'Module renamed successfully.'})
 
 @app.route("/admin/submodule/<int:submodule_id>/rename", methods=['POST'])
@@ -1853,14 +1851,14 @@ def rename_submodule(submodule_id):
         return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
     
     submodule = Submodule.query.get_or_404(submodule_id)
-    new_title = request.form.get('new_submodule_title')
+    data = request.get_json()
+    new_title = data.get('new_title')
 
     if not new_title:
         return jsonify({'status': 'error', 'message': 'New title cannot be empty.'}), 400
     
     submodule.title = new_title
     db.session.commit()
-    flash(f"Submodule '{submodule.title}' renamed successfully.", 'success')
     return jsonify({'status': 'success', 'message': 'Submodule renamed successfully.'})
 
 @app.route("/admin/item/<int:item_id>/rename", methods=['POST'])
@@ -1870,7 +1868,8 @@ def rename_content_item(item_id):
         return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
     
     item = ModuleItem.query.get_or_404(item_id)
-    new_title = request.form.get('new_content_item_title')
+    data = request.get_json()
+    new_title = data.get('new_title')
 
     if not new_title:
         return jsonify({'status': 'error', 'message': 'New title cannot be empty.'}), 400
@@ -1881,7 +1880,6 @@ def rename_content_item(item_id):
     if content_object:
         content_object.title = new_title
         db.session.commit()
-        flash(f"Content item '{content_object.title}' renamed successfully.", 'success')
         return jsonify({'status': 'success', 'message': 'Content item renamed successfully.'})
     else:
         return jsonify({'status': 'error', 'message': 'Content object not found.'}), 404
@@ -1908,77 +1906,6 @@ def create_admin():
     except Exception as e:
         print("Error creating admin user:", str(e))
         db.session.rollback()
-
-# app.py
-
-# ===================================
-# 5. CUSTOM CLI COMMANDS
-# ===================================
-
-@app.cli.command("create-admin")
-# ... (your existing create-admin function) ...
-
-
-# --- ADD THE NEW COMMAND BELOW ---
-
-@app.cli.command("process-quiz")
-@click.argument("filepath")
-def process_quiz(filepath):
-    """Processes a markdown quiz file and adds it to the database."""
-    print(f"Attempting to process quiz file: {filepath}")
-
-    # 1. Read the file
-    try:
-        with open(filepath, 'r') as f:
-            content = f.read()
-    except FileNotFoundError:
-        print(f"Error: File not found at '{filepath}'")
-        return
-
-    # 2. Parse the content
-    parsed_data = parse_quiz_markdown(content)
-    if not parsed_data:
-        print("Error: Parsing failed. Please check the file format. Aborting.")
-        return
-
-    # 3. Add to database
-    filename = os.path.basename(filepath)
-    quiz_title = os.path.splitext(filename)[0].replace('_', ' ').title()
-
-    # Check if a quiz with this filename already exists
-    if Quiz.query.filter_by(filename=filename).first():
-        print(f"Error: A quiz with filename '{filename}' already exists. Aborting.")
-        return
-    
-    try:
-        # Create the parent Quiz object
-        new_quiz = Quiz(title=quiz_title, filename=filename, passing_score=18)
-        db.session.add(new_quiz)
-
-        # Create all associated Question and Option objects
-        for q_data in parsed_data:
-            new_question = Question(question_text=q_data['question_text'], quiz=new_quiz)
-            db.session.add(new_question)
-            
-            for i, opt_text in enumerate(q_data['options']):
-                is_correct = (i == q_data['correct_index'])
-                new_option = Option(option_text=opt_text, is_correct=is_correct, question=new_question)
-                db.session.add(new_option)
-        
-        # Commit the entire transaction
-        db.session.commit()
-        print(f"Success! Quiz '{quiz_title}' with {len(parsed_data)} questions has been added to the database.")
-
-    except Exception as e:
-        db.session.rollback()
-        print(f"A database error occurred: {e}")
-        print("Transaction has been rolled back. No changes were saved.")
-
-QUIZ_CATEGORIES = {
-    'quiz': {'name': 'Quiz', 'questions': 4},
-    'test': {'name': 'Test', 'questions': 15},
-    'exam': {'name': 'Exam', 'questions': 50}
-}
 
 # ===================================
 # 6. CUSTOM CLI COMMANDS
