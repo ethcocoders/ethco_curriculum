@@ -6,7 +6,10 @@
 {% block content %}
     <!-- 1. Welcome Header -->
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">Welcome back, {{ current_user.username }}!</h1>
+        <div class="d-flex align-items-center">
+            <img src="{{ url_for('static', filename='uploads/profile_pics/' + current_user.profile_image_file) }}" class="rounded-circle me-3" height="60px" width="60px" alt="Profile Picture" loading="lazy" />
+            <h1 class="h2">Welcome back, {% if current_user.full_name %}{{ current_user.full_name }}{% else %}{{ current_user.username }}{% endif %}!</h1>
+        </div>
     </div>
 
     <!-- Top Row: Stats and Activity -->
@@ -102,32 +105,64 @@
     <h3 class="mt-5 mb-3">Start Learning</h3>
     <div class="row g-4">
         <div class="col-md-6 col-lg-4">
-            <div class="card text-white bg-primary h-100 shadow">
+            <div class="card text-dark bg-secondary h-100 shadow">
                 <div class="card-body text-center d-flex flex-column justify-content-center">
-                    <i class="bi bi-patch-question-fill fs-1 mb-2"></i>
-                    <h5 class="card-title">Quizzes</h5>
-                    <p class="card-text">Test your knowledge with multiple-choice questions.</p>
-                    <a href="{{ url_for('quizzes_page') }}" class="btn btn-light stretched-link">View Quizzes</a>
+                    <i class="fas fa-cog fs-1 mb-2"></i>
+                    <h5 class="card-title">Profile Settings</h5>
+                    <p class="card-text">Manage your profile information and account settings.</p>
+                    <a href="{{ url_for('profile_settings') }}" class="btn btn-light stretched-link">Go to Settings</a>
                 </div>
             </div>
         </div>
         <div class="col-md-6 col-lg-4">
-            <div class="card text-white bg-success h-100 shadow">
+            <div class="card text-dark bg-primary h-100 shadow">
+                <div class="card-body text-center d-flex flex-column justify-content-center">
+                    <i class="bi bi-patch-question-fill fs-1 mb-2"></i>
+                    <h5 class="card-title">Quizzes</h5>
+                    <p class="card-text">Test your knowledge with multiple-choice questions.</p>
+                    <a href="{{ url_for('course_dashboard') }}" class="btn btn-light stretched-link">View Quizzes</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card text-dark bg-success h-100 shadow">
                 <div class="card-body text-center d-flex flex-column justify-content-center">
                     <i class="bi bi-terminal-fill fs-1 mb-2"></i>
                     <h5 class="card-title">Hands-on Labs</h5>
                     <p class="card-text">Follow guided, step-by-step practical exercises.</p>
-                    <a href="{{ url_for('lab_list') }}" class="btn btn-light stretched-link">View Labs</a>
+                    <a href="{{ url_for('course_dashboard') }}" class="btn btn-light stretched-link">View Labs</a>
                 </div>
             </div>
         </div>
-        <div class="col-md-12 col-lg-4">
-            <div class="card text-white bg-info h-100 shadow">
+
+
+        <div class="col-md-6 col-lg-4">
+            <div class="card text-dark bg-info h-100 shadow">
                 <div class="card-body text-center d-flex flex-column justify-content-center">
                     <i class="bi bi-code-square fs-1 mb-2"></i>
                     <h5 class="card-title">Practical Sessions</h5>
                     <p class="card-text">Apply your skills in open-ended coding challenges.</p>
-                    <a href="{{ url_for('session_list') }}" class="btn btn-light stretched-link">View Sessions</a>
+                    <a href="{{ url_for('course_dashboard') }}" class="btn btn-light stretched-link">View Sessions</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card text-dark bg-warning h-100 shadow">
+                <div class="card-body text-center d-flex flex-column justify-content-center">
+                    <i class="fas fa-certificate fs-1 mb-2"></i>
+                    <h5 class="card-title">Certificates</h5>
+                    <p class="card-text">View and manage your earned certificates.</p>
+                    <a href="{{ url_for('certificates_list') }}" class="btn btn-light stretched-link">View Certificates</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card text-dark bg-danger h-100 shadow">
+                <div class="card-body text-center d-flex flex-column justify-content-center">
+                    <i class="fas fa-book fs-1 mb-2"></i>
+                    <h5 class="card-title">Notes</h5>
+                    <p class="card-text">Review your personal notes and course materials.</p>
+                    <a href="{{ url_for('course_dashboard') }}" class="btn btn-light stretched-link">View Notes</a>
                 </div>
             </div>
         </div>

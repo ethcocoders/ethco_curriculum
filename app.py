@@ -2,8 +2,9 @@ import click
 import os
 import datetime
 import yaml
-from flask import request, jsonify
+from flask import request, jsonify, send_from_directory
 from bs4 import BeautifulSoup
+from werkzeug.utils import secure_filename
 
 # ... (rest of your imports) ...
 import json
@@ -14,8 +15,10 @@ from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, UserMixin, login_user, current_user, logout_user, login_required
 from flask_migrate import Migrate
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, BooleanField
+from wtforms import StringField, PasswordField, SubmitField, BooleanField, TextAreaField
 from wtforms.validators import DataRequired, Length, Email, EqualTo, ValidationError
+from flask_wtf.file import FileField, FileAllowed
+
 
 # ===================================
 # 1. APP INITIALIZATION & CONFIG
@@ -27,6 +30,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://webapp_user:password@localhost/webapp_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_pics'
 
 # Initialize Extensions
 db = SQLAlchemy(app)
@@ -204,7 +208,18 @@ def parse_session_yaml(yaml_text):
             return None, f"Validation Error in Requirement #{i}: A 'check_type' string is required."
 
     return {'title': title, 'requirements': requirements}, None # Success
+
+def save_picture(form_picture):
+    random_hex = os.urandom(8).hex()
+    _, f_ext = os.path.splitext(form_picture.filename)
+    picture_fn = random_hex + f_ext
+    picture_path = os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], picture_fn)
     
+    # Save the file directly without resizing
+    form_picture.save(picture_path)
+
+    return picture_fn
+
 def update_user_progress_and_unlock(user, content_type, content_id):
     """
     Finds a module item, marks it as complete for the user, and checks
@@ -254,58 +269,151 @@ def update_user_progress_and_unlock(user, content_type, content_id):
             db.session.commit() # Commit module order change
     
 # app.py -> In the HELPER FUNCTIONS section
-def validate_user_code(user_html, requiremeants):
+def validate_html_code(user_html, requirements):
     """
     Validates a user's HTML code against a list of requirement objects.
-    Returns a list of booleans indicating the pass/fail status of each requirement.
+    Returns a list of dictionaries, each indicating the pass/fail status and a message.
     """
+    validation_results = []
+    
+    if not isinstance(user_html, str) or not user_html.strip():
+        return [{'description': 'HTML content provided', 'passed': False, 'message': 'No HTML content provided for validation.'}]
+    
     try:
         soup = BeautifulSoup(user_html, 'html.parser')
-        results = []
+    except Exception as e:
+        # Catch parsing errors from BeautifulSoup
+        return [{'description': 'HTML parsing', 'passed': False, 'message': f'Failed to parse HTML: {e}'}]
 
-        for req in requiremeants:
-            check_type = req.check_type
-            selector = req.selector
-            attr_name = req.attribute_name
-            expected_value = req.value
-            is_valid = False
+    for req in requirements:
+        check_type = req.check_type
+        selector = req.selector
+        attr_name = req.attribute_name
+        expected_value = req.value
+        is_valid = False
+        message = f"Requirement '{req.description}' failed."
 
-            element = soup.select_one(selector) if selector else None
-
+        try:
             if check_type == "doctype_exists":
-                # BeautifulSoup's handling of doctype is a bit special
-                doctype = soup.doctype if hasattr(soup, 'doctype') else None
-                if doctype and expected_value.lower() in str(doctype).lower():
+                doctype = soup.find(text=lambda text: isinstance(text, str) and text.lower().startswith('<!doctype'))
+                if doctype and expected_value and expected_value.lower() in doctype.lower():
                     is_valid = True
+                    message = f"Doctype '{expected_value}' found."
+                elif not doctype:
+                    message = "Doctype declaration not found."
+                else:
+                    message = f"Doctype found but does not match '{expected_value}'."
             
-            elif element: # Most checks require the element to exist first
-                if check_type == "element_exists":
+            elif check_type == "element_exists":
+                element = soup.select_one(selector)
+                if element:
                     is_valid = True
-                
-                elif check_type == "attribute_exists":
-                    if attr_name and element.has_attr(attr_name):
+                    message = f"Element '{selector}' found."
+                else:
+                    message = f"Element '{selector}' not found."
+
+            elif check_type == "element_count":
+                elements = soup.select(selector)
+                if elements and expected_value is not None:
+                    try:
+                        expected_count = int(expected_value)
+                        if len(elements) == expected_count:
+                            is_valid = True
+                            message = f"Found {expected_count} elements matching '{selector}'."
+                        else:
+                            message = f"Expected {expected_count} elements matching '{selector}', but found {len(elements)}."
+                    except ValueError:
+                        message = f"Invalid expected_value for element_count: '{expected_value}' is not an integer."
+                else:
+                    message = f"No elements matching '{selector}' found or expected count not specified."
+            
+            elif check_type == "attribute_exists":
+                element = soup.select_one(selector)
+                if element and attr_name:
+                    if element.has_attr(attr_name):
                         if expected_value is not None:
-                            # Check for both attribute presence and its value
                             if element[attr_name] == expected_value:
                                 is_valid = True
+                                message = f"Element '{selector}' has attribute '{attr_name}' with value '{expected_value}'."
+                            else:
+                                message = f"Element '{selector}' has attribute '{attr_name}' but its value is '{element[attr_name]}' not '{expected_value}'."
                         else:
-                            # Just check for attribute presence
                             is_valid = True
-                
-                elif check_type == "element_has_text":
-                    # .strip() to handle leading/trailing whitespace in user's text
-                    if element.get_text().strip() == expected_value:
-                        is_valid = True
-
-            results.append(is_valid)
+                            message = f"Element '{selector}' has attribute '{attr_name}'."
+                    else:
+                        message = f"Element '{selector}' does not have attribute '{attr_name}'."
+                else:
+                    message = f"Element '{selector}' not found or attribute name not specified."
             
-        return results
+            elif check_type == "element_has_text":
+                element = soup.select_one(selector)
+                if element and expected_value is not None:
+                    if element.get_text(strip=True) == expected_value:
+                        is_valid = True
+                        message = f"Element '{selector}' contains text '{expected_value}'."
+                    else:
+                        message = f"Element '{selector}' contains text '{element.get_text(strip=True)}' but expected '{expected_value}'."
+                else:
+                    message = f"Element '{selector}' not found or expected text not specified."
+            
+            # Add more HTML-specific checks here as needed
+            # elif check_type == "element_contains_child":
+            #     ...
 
-    except Exception as e:
-        # If the user's HTML is completely broken, BeautifulSoup might fail.
-        # Return a list of all False.
-        print(f"Code validation error: {e}")
-        return [False] * len(requirements)    
+        except Exception as e:
+            message = f"An error occurred during validation of '{req.description}': {e}"
+            is_valid = False # Ensure it's marked as failed if an exception occurs during check
+
+        validation_results.append({
+            'description': req.description,
+            'passed': is_valid,
+            'message': message
+        })
+            
+    return validation_results
+
+# --- Placeholder for future CSS validation ---
+def validate_css_code(user_css, requirements):
+    """
+    Placeholder for validating a user's CSS code against a list of requirement objects.
+    This function would integrate specialized CSS parsing and validation tools.
+    """
+    # Example:
+    # from css_parser import CSSParser # Hypothetical CSS parser library
+    # parser = CSSParser()
+    # stylesheet = parser.parse(user_css)
+    #
+    # validation_results = []
+    # for req in requirements:
+    #     # Logic to check CSS rules, properties, values, etc.
+    #     # using the parsed stylesheet
+    #     is_valid = False
+    #     message = "CSS validation not yet implemented."
+    #     validation_results.append({
+    #         'description': req.description,
+    #         'passed': is_valid,
+    #         'message': message
+    #     })
+    # return validation_results
+    return [{'description': r.description, 'passed': False, 'message': 'CSS validation not yet implemented.'} for r in requirements]
+
+# --- Placeholder for future JavaScript validation ---
+def validate_javascript_code(user_js, requirements):
+    """
+    Placeholder for validating a user's JavaScript code against a list of requirement objects.
+    This function would integrate specialized JavaScript parsing and validation tools.
+    """
+    return [{'description': r.description, 'passed': False, 'message': 'JavaScript validation not yet implemented.'} for r in requirements]
+
+# --- Placeholder for future Backend (Node.js) validation ---
+def validate_backend_code(user_backend_files, requirements):
+    """
+    Placeholder for validating a user's backend code (e.g., Node.js) against a list of requirement objects.
+    This would involve static analysis, potentially running tests, or deploying in a sandbox.
+    """
+    return [{'description': r.description, 'passed': False, 'message': 'Backend validation not yet implemented.'} for r in requirements]
+
+# app.py -> API ROUTES section    
         
 # app.py -> API ROUTES section
 @app.route("/api/lab/check_step", methods=['POST'])
@@ -368,18 +476,17 @@ def validate_session():
         return jsonify({'error': 'Session not found'}), 404
         
     # Use our powerful validator function from Subtask 4.2
-    results = validate_user_code(user_code, session.requirements)
+    results = validate_html_code(user_code, session.requirements)
     
     # --- NEW PROGRESS HOOK LOGIC ---
-    # `all(results)` will be True only if every item in the list is True. 
-    is_complete = all(results) 
+    # `all(result['passed'])` will be True only if every item in the list is True.
+    is_complete = all(result['passed'] for result in results)
     
     if is_complete:
         update_user_progress_and_unlock(current_user, 'session', session_id)
     
     # Return both the individual results and the overall completion status
     return jsonify({'results': results, 'is_complete': is_complete})
-        # --- END OF NEW LOGIC ---
 # app.py -> ROUTES section
 
 # ... (after lab_list route)
@@ -475,33 +582,41 @@ def confirm_certificate_page(module_id):
     module = Module.query.get_or_404(module_id)
     return render_template('confirm_certificate.html', module=module)
 
-@app.route('/certificate/create', methods=['POST'])
+@app.route("/profile/settings", methods=['GET', 'POST'])
 @login_required
-def create_certificate():
-    module_id = request.form.get('module_id')
-    certificate_name = request.form.get('certificate_name')
-    module = Module.query.get_or_404(module_id)
+def profile_settings():
+    profile_form = ProfileForm()
+    password_form = PasswordForm()
 
-    if not certificate_name:
-        flash('Please enter a name for the certificate.', 'danger')
-        return redirect(url_for('confirm_certificate_page', module_id=module.id))
+    if profile_form.validate_on_submit() and request.method == 'POST' and 'profile_update' in request.form:
+        if profile_form.picture.data:
+            picture_file = save_picture(profile_form.picture.data)
+            current_user.profile_image_file = picture_file
+        current_user.full_name = profile_form.full_name.data
+        current_user.bio = profile_form.bio.data
+        db.session.commit()
+        flash('Your profile has been updated!', 'success')
+        return redirect(url_for('profile_settings'))
+    elif request.method == 'GET':
+        profile_form.full_name.data = current_user.full_name
+        profile_form.bio.data = current_user.bio
+    
+    return render_template('profile_settings.html', profile_form=profile_form, password_form=password_form)
 
-    # Final check to ensure the user isn't trying to create a certificate for an uncompleted module
-    user_progress_map = get_user_progress_map(current_user.id)
-    if calculate_module_progress(module, user_progress_map) != 100:
-        flash('You cannot create a certificate for a module that is not 100% complete.', 'danger')
-        return redirect(url_for('course_dashboard'))
-
-    new_certificate = Certificate(
-        user_id=current_user.id,
-        module_id=module.id,
-        certificate_name=certificate_name
-    )
-    db.session.add(new_certificate)
-    db.session.commit()
-
-    flash('Your new certificate has been generated!', 'success')
-    return redirect(url_for('view_certificate', certificate_id=new_certificate.id))
+@app.route("/profile/change-password", methods=['POST'])
+@login_required
+def change_password():
+    password_form = PasswordForm()
+    if password_form.validate_on_submit() and request.method == 'POST' and 'password_update' in request.form:
+        if bcrypt.check_password_hash(current_user.password_hash, password_form.old_password.data):
+            hashed_password = bcrypt.generate_password_hash(password_form.new_password.data).decode('utf-8')
+            current_user.password_hash = hashed_password
+            db.session.commit()
+            flash('Your password has been updated!', 'success')
+            return redirect(url_for('profile_settings'))
+        else:
+            flash('Incorrect current password.', 'danger')
+    return redirect(url_for('profile_settings'))
 
 
 
@@ -627,6 +742,11 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(60), nullable=False)
     role = db.Column(db.String(10), nullable=False, default='user')
+    
+    # -- Profile Fields --
+    full_name = db.Column(db.String(100), nullable=True)
+    bio = db.Column(db.Text, nullable=True)
+    profile_image_file = db.Column(db.String(20), nullable=False, default='default.jpg')
     
     # --- ADD THIS COLUMN FOR MODULE LOCKING ---
     current_module_order = db.Column(db.Integer, nullable=False, default=1)
@@ -901,11 +1021,13 @@ class RegistrationForm(FlaskForm):
                                      validators=[DataRequired(), EqualTo('password')])
     submit = SubmitField('Sign Up')
 
+    # Custom validator to check if username is already taken
     def validate_username(self, username):
         user = User.query.filter_by(username=username.data).first()
         if user:
             raise ValidationError('That username is taken. Please choose a different one.')
 
+    # Custom validator to check if email is already taken
     def validate_email(self, email):
         user = User.query.filter_by(email=email.data).first()
         if user:
@@ -917,6 +1039,19 @@ class LoginForm(FlaskForm):
     password = PasswordField('Password', validators=[DataRequired()])
     remember = BooleanField('Remember Me')
     submit = SubmitField('Login')
+
+
+class ProfileForm(FlaskForm):
+    full_name = StringField('Full Name', validators=[Length(max=100)])
+    bio = TextAreaField('About Me', validators=[Length(max=500)])
+    picture = FileField('Update Profile Picture', validators=[FileAllowed(['jpg', 'png', 'jpeg'])])
+    submit = SubmitField('Update Profile')
+
+class PasswordForm(FlaskForm):
+    old_password = PasswordField('Current Password', validators=[DataRequired()])
+    new_password = PasswordField('New Password', validators=[DataRequired(), Length(min=6)])
+    confirm_new_password = PasswordField('Confirm New Password', validators=[DataRequired(), EqualTo('new_password')])
+    submit = SubmitField('Change Password')
 
 
 # ===================================
@@ -1105,6 +1240,12 @@ def lab_list():
     labs = Lab.query.order_by(Lab.id.asc()).all()
     # We can add progress tracking here later
     return render_template('lab_list.html', labs=labs)
+
+@app.route("/certificates")
+@login_required
+def certificates_list():
+    certificates = Certificate.query.filter_by(user_id=current_user.id).order_by(Certificate.completion_date.desc()).all()
+    return render_template('certificate_list.html', certificates=certificates)
 
 # ===================================
 # 3.8 CONTEXT PROCESSOR
