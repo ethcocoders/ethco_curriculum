@@ -14,3 +14,5 @@ click
 psycopg2-binary
 Markdown==3.4.1
 xhtml2pdf==0.2.14
+python-dotenv
+gunicorn
