@@ -582,6 +582,34 @@ def confirm_certificate_page(module_id):
     module = Module.query.get_or_404(module_id)
     return render_template('confirm_certificate.html', module=module)
 
+@app.route('/create-certificate', methods=['POST'])
+@login_required
+def create_certificate():
+    module_id = request.form.get('module_id')
+    certificate_name = request.form.get('certificate_name')
+
+    if not module_id or not certificate_name:
+        flash('Missing module ID or certificate name.', 'danger')
+        return redirect(url_for('course_dashboard'))
+
+    module = Module.query.get_or_404(module_id)
+
+    # Check if a certificate already exists for this user and module
+    existing_certificate = Certificate.query.filter_by(user_id=current_user.id, module_id=module.id).first()
+    if existing_certificate:
+        flash('You have already earned a certificate for this module.', 'info')
+        return redirect(url_for('view_certificate', certificate_id=existing_certificate.id))
+
+    new_certificate = Certificate(
+        certificate_name=certificate_name,
+        user_id=current_user.id,
+        module_id=module.id
+    )
+    db.session.add(new_certificate)
+    db.session.commit()
+    flash('Your certificate has been successfully generated!', 'success')
+    return redirect(url_for('view_certificate', certificate_id=new_certificate.id))
+
 @app.route("/profile/settings", methods=['GET', 'POST'])
 @login_required
 def profile_settings():
@@ -2497,4 +2525,6 @@ def promote(username):
 # ===================================
 
 if __name__ == '__main__':
+    with app.app_context():
+        create_admin()
     app.run(debug=True)
