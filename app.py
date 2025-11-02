@@ -28,7 +28,7 @@ app = Flask(__name__)
 
 # Configuration
 app.config['SECRET_KEY'] = os.urandom(24)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://webapp_user:password@localhost/webapp_db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_pics'
 
