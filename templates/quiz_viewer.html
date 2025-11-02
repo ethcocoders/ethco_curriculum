@@ -38,16 +38,26 @@
             <div id="results-area" style="display: none;">
                 <h2 id="result-title">Quiz Complete!</h2>
                 <p id="result-summary" class="lead"></p>
-                <div class="alert" id="result-feedback" role="alert"></div>
-                <button id="review-btn" class="btn btn-secondary mt-3">Review Answers</button>
-                <a href="{{ url_for('quizzes_page') }}" class="btn btn-primary mt-3">Back to Quizzes</a>
+                {% if submodule_id %}
+                <a href="{{ url_for('submodule_viewer', submodule_id=submodule_id) }}" class="btn btn-info mt-3">Back to Submodule</a>
+                {% elif module_id %}
+                <a href="{{ url_for('module_viewer', module_id=module_id) }}" class="btn btn-info mt-3">Back to Module</a>
+                {% else %}
+                <a href="{{ url_for('course_dashboard') }}" class="btn btn-info mt-3">Back to Course Dashboard</a>
+                {% endif %}
             </div>
             
             <!-- Review Area (initially hidden) -->
             <div id="review-area" style="display: none;">
                 <h2>Review Your Answers</h2>
                 <div id="review-container" class="mt-4"></div>
-                <a href="{{ url_for('quizzes_page') }}" class="btn btn-primary mt-3">Back to Quizzes</a>
+                {% if submodule_id %}
+                <a href="{{ url_for('submodule_viewer', submodule_id=submodule_id) }}" class="btn btn-info mt-3">Back to Submodule</a>
+                {% elif module_id %}
+                <a href="{{ url_for('module_viewer', module_id=module_id) }}" class="btn btn-info mt-3">Back to Module</a>
+                {% else %}
+                <a href="{{ url_for('course_dashboard') }}" class="btn btn-info mt-3">Back to Course Dashboard</a>
+                {% endif %}
             </div>
             
             <hr class="my-4">

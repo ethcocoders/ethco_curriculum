@@ -1184,83 +1184,11 @@ def logout():
 
 # app.py
 
-@app.route("/quizzes")
-@login_required
-def quizzes_page():
-    quizzes = Quiz.query.order_by(Quiz.id.asc()).all()
-    
-    # --- NEW LOGIC TO CHECK QUIZ STATUSES ---
-    quiz_statuses = {}
-    # Get all attempts for the current user
-    attempts = QuizAttempt.query.filter_by(user_id=current_user.id).order_by(QuizAttempt.timestamp.desc()).all()
-    
-    # Use a dictionary to keep track of the latest status for each quiz
-    latest_attempts = {attempt.quiz_id: attempt for attempt in reversed(attempts)}
 
-    for quiz in quizzes:
-        # Check if user has passed this quiz at any point
-        has_passed = any(a.quiz_id == quiz.id and a.passed for a in attempts)
-        if has_passed:
-            quiz_statuses[quiz.id] = {'status': 'completed'}
-        # If not passed, check the latest attempt for a lockout
-        elif quiz.id in latest_attempts:
-            latest_attempt = latest_attempts[quiz.id]
-            if not latest_attempt.passed:
-                time_since_attempt = datetime.datetime.utcnow() - latest_attempt.timestamp
-                if time_since_attempt.total_seconds() < 60: # 1 minute lockout
-                    unlock_time = (latest_attempt.timestamp + datetime.timedelta(seconds=60)).isoformat() + "Z"
-                    quiz_statuses[quiz.id] = {'status': 'locked', 'unlock_time': unlock_time}
-
-    return render_template('quiz_list.html', quizzes=quizzes, statuses=quiz_statuses)
-
-# --- END OF NEW ROUTE ---
 
 # app.py
 
-@app.route("/api/quizzes")
-@login_required
-def quiz_list_api():
-    print("DEBUG: /api/quizzes endpoint was hit!") # <-- Add this line
-    try:
-        quizzes = Quiz.query.order_by(Quiz.id.asc()).all()
-        quiz_data = []
-        
-        attempts = QuizAttempt.query.filter_by(user_id=current_user.id).order_by(QuizAttempt.timestamp.desc()).all()
-        
-        latest_attempts = {}
-        for attempt in attempts:
-            if attempt.quiz_id not in latest_attempts:
-                latest_attempts[attempt.quiz_id] = attempt
-                
-        passed_quiz_ids = {a.quiz_id for a in attempts if a.passed}
 
-        for quiz in quizzes:
-            status = 'available'
-            unlock_time = None
-            
-            if quiz.id in passed_quiz_ids:
-                status = 'completed'
-            elif quiz.id in latest_attempts:
-                latest_attempt = latest_attempts[quiz.id]
-                if not latest_attempt.passed:
-                    time_since_attempt = datetime.datetime.utcnow() - latest_attempt.timestamp
-                    if time_since_attempt.total_seconds() < 60:
-                        status = 'locked'
-                        unlock_time = (latest_attempt.timestamp + datetime.timedelta(seconds=60)).isoformat() + "Z"
-
-            quiz_data.append({
-                'id': quiz.id,
-                'title': quiz.title,
-                'question_count': len(quiz.questions),
-                'passing_score': quiz.passing_score,
-                'status': status,
-                'unlock_time': unlock_time
-            })
-            
-        return jsonify(quiz_data)
-    except Exception as e:
-        print(f"ERROR in quiz_list_api: {e}") # <-- Add this for error logging
-        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route("/labs")
 @login_required
@@ -1347,7 +1275,16 @@ def quiz_viewer(quiz_id):
     # This route is now simpler. We just fetch the quiz object.
     # The relationships in our models will allow Jinja to access questions and options.
     quiz = Quiz.query.get_or_404(quiz_id)
-    
+
+    # Find the parent module and submodule
+    module_item = ModuleItem.query.filter_by(content_type='quiz', content_id=quiz.id).first()
+    module_id = None
+    submodule_id = None
+    if module_item:
+        submodule_id = module_item.submodule_id
+        if module_item.submodule:
+            module_id = module_item.submodule.module_id
+
     # We still need the questions with answers for the review part later.
     questions_for_review = []
     for q in quiz.questions:
@@ -1358,7 +1295,9 @@ def quiz_viewer(quiz_id):
     return render_template(
         'quiz_viewer.html', 
         quiz=quiz,
-        questions_with_answers_json=questions_with_answers_json
+        questions_with_answers_json=questions_with_answers_json,
+        module_id=module_id,
+        submodule_id=submodule_id
     )
 
 # app.py
