@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             
             // Update the UI based on the results from the API
-            updateChecklist(data.results);
+            updateChecklist(data.results, data.is_complete);
 
         } catch (error) {
             console.error('Validation Error:', error);
@@ -45,8 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    function updateChecklist(results) {
-        let allCorrect = true;
+    function updateChecklist(results, is_complete) {
+        const statusIcons = checklist.querySelectorAll('.status-icon'); // Query inside to get latest
         results.forEach((isCorrect, index) => {
             const icon = statusIcons[index];
             if (icon) {
@@ -59,14 +59,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     icon.classList.add('bi-x-circle-fill');
                     icon.style.color = 'red';
-                    allCorrect = false;
                 }
             }
         });
 
-        if (allCorrect) {
-            // Redirect to the completion page
-            window.location.href = `/session/${sessionId}/complete`;
+        if (is_complete) {
+            // Trigger confetti
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+            // Redirect to the completion page after a short delay
+            setTimeout(() => {
+                window.location.href = `/session/${sessionId}/complete`;
+            }, 2000); // 2 second delay
         }
     }
 });

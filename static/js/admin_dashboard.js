@@ -418,10 +418,10 @@ document.querySelectorAll('select[name="content_type"]').forEach(select => {
     });
 });
 
-// Delete Content Item
-function deleteContentItem(itemId) {
-    if (confirm('Are you sure you want to delete this content item?')) {
-        fetch(`/admin/item/${itemId}/delete`, {
+// Unlink Content Item
+function unlinkContentItem(itemId) {
+    if (confirm('Are you sure you want to unlink this content item? This will not delete the content itself.')) {
+        fetch(`/admin/item/${itemId}/unlink`, {
             method: 'POST'
         })
         .then(response => response.json())
@@ -434,12 +434,33 @@ function deleteContentItem(itemId) {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('An error occurred while deleting the content item.');
+            alert('An error occurred while unlinking the content item.');
         });
     }
 }
 
-// Reorder Content Items
+// Delete Content
+function deleteContent(contentType, contentId) {
+    if (confirm('Are you sure you want to permanently delete this content? This action cannot be undone.')) {
+        fetch(`/admin/content/${contentType}/${contentId}/delete`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while deleting the content.');
+        });
+    }
+}
+
+    // Reorder Content Items
 function reorderContentItems(submoduleId) {
     const contentList = document.querySelector(`.content-items-list[data-submodule-id="${submoduleId}"]`);
     const newOrder = Array.from(contentList.querySelectorAll('.content-item')).map(item => item.dataset.itemId);
@@ -465,15 +486,93 @@ function reorderContentItems(submoduleId) {
     });
 }
 
+// Function to fetch and populate content_id dropdown
+async function populateContentIdSelect(selectedContentType, contentIdSelect) {
+    contentIdSelect.innerHTML = '<option value="">-- Select Content --</option>'; // Clear previous options
+    if (!selectedContentType) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/admin/content/list/${selectedContentType}`);
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            data.items.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = item.title;
+                contentIdSelect.appendChild(option);
+            });
+        } else {
+            alert('Error fetching content: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred while fetching content.');
+    }
+}
+
 // ===================================
 // EVENT LISTENERS FOR DELETE BUTTONS
 // ===================================
 
-document.querySelectorAll('.btn-delete-content').forEach(btn => {
+// Unlink Content Item
+function unlinkContentItem(itemId) {
+    if (confirm('Are you sure you want to unlink this content item? This will not delete the content itself.')) {
+        fetch(`/admin/item/${itemId}/unlink`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while unlinking the content item.');
+        });
+    }
+}
+
+// Delete Content
+function deleteContent(contentType, contentId) {
+    if (confirm('Are you sure you want to permanently delete this content? This action cannot be undone.')) {
+        fetch(`/admin/content/${contentType}/${contentId}/delete`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while deleting the content.');
+        });
+    }
+}
+
+document.querySelectorAll('.btn-unlink-content').forEach(btn => {
     btn.addEventListener('click', function(e) {
         e.preventDefault();
         const itemId = this.dataset.itemId;
-        deleteContentItem(itemId);
+        unlinkContentItem(itemId);
+    });
+});
+
+document.querySelectorAll('.btn-delete-content').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const contentType = this.dataset.contentType;
+        const contentId = this.dataset.contentId;
+        deleteContent(contentType, contentId);
     });
 });
 
@@ -483,4 +582,54 @@ document.querySelectorAll('.btn-delete-content').forEach(btn => {
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeSortable();
+
+    const addContentForm = document.getElementById('add-content-form');
+    if (addContentForm) {
+        const contentTypeSelect = document.getElementById('content-type-select');
+        const contentIdSelect = document.getElementById('content-id-select');
+        const submoduleId = addContentForm.dataset.submoduleId;
+
+        // Event listener for content type selection change
+        contentTypeSelect.addEventListener('change', function() {
+            populateContentIdSelect(this.value, contentIdSelect);
+        });
+
+        // Event listener for add content form submission
+        addContentForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const content_type = contentTypeSelect.value;
+            const content_id = contentIdSelect.value;
+
+            if (!content_type || !content_id) {
+                alert('Please select both content type and content.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/admin/item/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        submodule_id: submoduleId,
+                        content_type: content_type,
+                        content_id: content_id
+                    })
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    alert('Content item added successfully!');
+                    location.reload(); 
+                } else {
+                    alert('Error adding content: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while adding content.');
+            }
+        });
+    }
 });

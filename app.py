@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 # ... (rest of your imports) ...
 import json
+import markdown
 from flask import Flask, render_template, url_for, flash, redirect, jsonify, request # <-- ADD request
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
@@ -34,6 +35,13 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
 migrate = Migrate(app, db)
+
+# Quiz Categories
+QUIZ_CATEGORIES = {
+    'quiz': {'name': 'Quiz', 'questions': 3, 'passing_score': 3},
+    'test': {'name': 'Test', 'questions': 15, 'passing_score': 13},
+    'exam': {'name': 'Exam', 'questions': 40, 'passing_score': 28}
+}
 
 # ===================================
 # 4. HELPER FUNCTIONS
@@ -223,30 +231,27 @@ def update_user_progress_and_unlock(user, content_type, content_id):
     progress_record.status = 'completed'
     db.session.commit()
 
-    # --- MODULE UNLOCKING LOGIC ---
+    # --- MODULE COMPLETION & CERTIFICATE LOGIC ---
     parent_module = module_item.submodule.module
     
-    # Only check for unlocking if the user just completed something in their CURRENT module
-    if user.current_module_order != parent_module.order:
-        return
-
-    # Get all item IDs that belong to this entire module
     all_item_ids = [
         item.id for item in ModuleItem.query.join(Submodule)
         .filter(Submodule.module_id == parent_module.id).all()
     ]
     
-    # Count how many of those items the user has completed
     completed_items_count = UserProgress.query.filter(
         UserProgress.user_id == user.id,
         UserProgress.module_item_id.in_(all_item_ids),
         UserProgress.status == 'completed'
     ).count()
 
-    # If the counts match, the module is 100% complete. Unlock the next one!
+    # Check if the module is now 100% complete
     if len(all_item_ids) > 0 and completed_items_count == len(all_item_ids):
-        user.current_module_order += 1
-        db.session.commit()
+        # --- MODULE UNLOCKING ---
+        # Only unlock the *next* module if the user just completed their *current* one.
+        if user.current_module_order == parent_module.order:
+            user.current_module_order += 1
+            db.session.commit() # Commit module order change
     
 # app.py -> In the HELPER FUNCTIONS section
 def validate_user_code(user_html, requiremeants):
@@ -258,7 +263,7 @@ def validate_user_code(user_html, requiremeants):
         soup = BeautifulSoup(user_html, 'html.parser')
         results = []
 
-        for req in requirements:
+        for req in requiremeants:
             check_type = req.check_type
             selector = req.selector
             attr_name = req.attribute_name
@@ -363,17 +368,17 @@ def validate_session():
         return jsonify({'error': 'Session not found'}), 404
         
     # Use our powerful validator function from Subtask 4.2
-        results = validate_user_code(user_code, session.requirements)
+    results = validate_user_code(user_code, session.requirements)
     
-        # --- NEW PROGRESS HOOK LOGIC ---
-        # `all(results)` will be True only if every item in the list is True. 
-        is_complete = all(results) 
-        
-        if is_complete:
-            update_user_progress_and_unlock(current_user, 'session', session_id)
-        
-        # Return both the individual results and the overall completion status
-        return jsonify({'results': results, 'is_complete': is_complete})
+    # --- NEW PROGRESS HOOK LOGIC ---
+    # `all(results)` will be True only if every item in the list is True. 
+    is_complete = all(results) 
+    
+    if is_complete:
+        update_user_progress_and_unlock(current_user, 'session', session_id)
+    
+    # Return both the individual results and the overall completion status
+    return jsonify({'results': results, 'is_complete': is_complete})
         # --- END OF NEW LOGIC ---
 # app.py -> ROUTES section
 
@@ -390,6 +395,115 @@ def session_list():
 def session_viewer(session_id):
     session = PracticalSession.query.get_or_404(session_id)
     return render_template('session_viewer.html', session=session)
+
+@app.route("/session/<int:session_id>/complete")
+@login_required
+def session_complete(session_id):
+    session = PracticalSession.query.get_or_404(session_id)
+    return render_template('session_complete.html', session=session)
+
+@app.route("/notes")
+@login_required
+def note_list():
+    notes = Note.query.order_by(Note.id.asc()).all()
+    return render_template('note_list.html', notes=notes)
+
+@app.route("/note/<int:note_id>")
+@login_required
+def note_viewer(note_id):
+    note = Note.query.get_or_404(note_id)
+    return render_template('note_viewer.html', note=note)
+
+@app.route("/module/<int:module_id>")
+@login_required
+def module_viewer(module_id):
+    module = Module.query.get_or_404(module_id)
+    user_progress_map = get_user_progress_map(current_user.id)
+    return render_template('module_viewer.html', module=module, user_progress_map=user_progress_map)
+
+@app.route("/submodule/<int:submodule_id>")
+@login_required
+def submodule_viewer(submodule_id):
+    submodule = Submodule.query.get_or_404(submodule_id)
+    user_progress_map = get_user_progress_map(current_user.id)
+    return render_template('submodule_viewer.html', submodule=submodule, user_progress_map=user_progress_map)
+
+@app.route('/certificate/<int:certificate_id>')
+@login_required
+def view_certificate(certificate_id):
+    certificate = Certificate.query.get_or_404(certificate_id)
+    # Security check: ensure the current user is the owner of the certificate
+    if certificate.user_id != current_user.id:
+        flash('You are not authorized to view this certificate.', 'danger')
+        return redirect(url_for('course_dashboard'))
+    return render_template('certificate.html', certificate=certificate)
+
+@app.route('/certificate/<int:certificate_id>/download')
+@login_required
+def download_certificate(certificate_id):
+    certificate = Certificate.query.get_or_404(certificate_id)
+    if certificate.user_id != current_user.id:
+        flash('You are not authorized to download this certificate.', 'danger')
+        return redirect(url_for('course_dashboard'))
+    
+    # Placeholder for PDF generation
+    flash('PDF export functionality is coming soon!', 'info')
+    return redirect(url_for('view_certificate', certificate_id=certificate.id))
+
+@app.route('/module/<int:module_id>/check-completion', methods=['POST'])
+@login_required
+def check_module_completion(module_id):
+    module = Module.query.get_or_404(module_id)
+    user_progress_map = get_user_progress_map(current_user.id)
+    progress_percent = calculate_module_progress(module, user_progress_map)
+
+    if progress_percent == 100:
+        # Check if a certificate has already been earned
+        existing_certificate = Certificate.query.filter_by(user_id=current_user.id, module_id=module.id).first()
+        if existing_certificate:
+            flash('You have already earned a certificate for this module.', 'info')
+            return redirect(url_for('view_certificate', certificate_id=existing_certificate.id))
+        else:
+            return redirect(url_for('confirm_certificate_page', module_id=module.id))
+    else:
+        flash(f'You have not completed the module yet. Your current progress is {progress_percent}%. Keep going!', 'warning')
+        return redirect(url_for('module_viewer', module_id=module.id))
+
+@app.route('/module/<int:module_id>/confirm-certificate')
+@login_required
+def confirm_certificate_page(module_id):
+    module = Module.query.get_or_404(module_id)
+    return render_template('confirm_certificate.html', module=module)
+
+@app.route('/certificate/create', methods=['POST'])
+@login_required
+def create_certificate():
+    module_id = request.form.get('module_id')
+    certificate_name = request.form.get('certificate_name')
+    module = Module.query.get_or_404(module_id)
+
+    if not certificate_name:
+        flash('Please enter a name for the certificate.', 'danger')
+        return redirect(url_for('confirm_certificate_page', module_id=module.id))
+
+    # Final check to ensure the user isn't trying to create a certificate for an uncompleted module
+    user_progress_map = get_user_progress_map(current_user.id)
+    if calculate_module_progress(module, user_progress_map) != 100:
+        flash('You cannot create a certificate for a module that is not 100% complete.', 'danger')
+        return redirect(url_for('course_dashboard'))
+
+    new_certificate = Certificate(
+        user_id=current_user.id,
+        module_id=module.id,
+        certificate_name=certificate_name
+    )
+    db.session.add(new_certificate)
+    db.session.commit()
+
+    flash('Your new certificate has been generated!', 'success')
+    return redirect(url_for('view_certificate', certificate_id=new_certificate.id))
+
+
 
 # ... (rest of your routes)
 
@@ -523,6 +637,9 @@ class User(db.Model, UserMixin):
     
     # --- ADD THIS RELATIONSHIP FOR COURSE PROGRESS ---
     progress_records = db.relationship('UserProgress', backref='user', lazy=True, cascade="all, delete-orphan")
+    
+    # --- ADD THIS RELATIONSHIP FOR CERTIFICATES ---
+    certificates = db.relationship('Certificate', backref='user', lazy=True)
 
 
     def __repr__(self):
@@ -550,6 +667,9 @@ class Module(db.Model):
     
     # Relationship to Submodules
     submodules = db.relationship('Submodule', back_populates='module', lazy='dynamic', cascade="all, delete-orphan", order_by='Submodule.order')
+    
+    # --- ADD THIS RELATIONSHIP FOR CERTIFICATES ---
+    certificates = db.relationship('Certificate', backref='module', lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"Module('{self.title}', Order: {self.order})"
@@ -602,6 +722,8 @@ class ModuleItem(db.Model):
             return Lab.query.get(self.content_id)
         elif self.content_type == 'session':
             return PracticalSession.query.get(self.content_id)
+        elif self.content_type == 'note':
+            return Note.query.get(self.content_id)
         return None
 
 class UserProgress(db.Model):
@@ -619,6 +741,22 @@ class UserProgress(db.Model):
 
     def __repr__(self):
         return f"UserProgress(User: {self.user_id}, Item: {self.module_item_id}, Status: '{self.status}')"
+
+class Certificate(db.Model):
+    __tablename__ = 'certificate'
+    id = db.Column(db.Integer, primary_key=True)
+    certificate_name = db.Column(db.String(100), nullable=False)
+    completion_date = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
+    
+    # Foreign Keys
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    module_id = db.Column(db.Integer, db.ForeignKey('module.id'), nullable=False)
+    
+    # A user can only have one certificate per module
+    __table_args__ = (db.UniqueConstraint('user_id', 'module_id', name='uq_user_module_certificate'),)
+
+    def __repr__(self):
+        return f"Certificate(User: {self.user_id}, Module: {self.module_id})"
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -730,6 +868,17 @@ class Requirement(db.Model):
 
     def __repr__(self):
         return f"Requirement('{self.check_type}' for Session ID: {self.session_id})"
+
+class Note(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    filename = db.Column(db.String(100), unique=True, nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False, unique=True)
+    quiz = db.relationship('Quiz', backref=db.backref('note_assoc', uselist=False))
+
+    def __repr__(self):
+        return f"Note('{self.title}')"
 
 # ===================================
 # 3. FORMS
@@ -853,12 +1002,16 @@ def course_dashboard():
     if total_items_in_course > 0:
         overall_progress = round((completed_items_in_course / total_items_in_course) * 100)
 
+    # 4. Get a dictionary of certificates the user has earned, keyed by module_id
+    user_certificates = {cert.module_id: cert for cert in current_user.certificates}
+
     return render_template(
         'course.html', 
         modules=modules,
         module_progress_data=module_progress_data,
         user_progress_map=user_progress_map,
-        overall_progress=overall_progress
+        overall_progress=overall_progress,
+        user_certificates=user_certificates
     )
 
 @app.route("/logout")
@@ -961,6 +1114,10 @@ def inject_now():
     """Injects the 'now' variable (current time) into all templates."""
     return {'now': datetime.datetime.utcnow()}
 
+@app.template_filter('markdown')
+def markdown_filter(s):
+    return markdown.markdown(s, extensions=['fenced_code', 'tables'])
+
 # app.py
 
 # ... (in the ROUTES section, after lab_list) ...
@@ -1059,6 +1216,9 @@ def dashboard():
     # Get the 3 most recent attempts for the activity feed
     recent_attempts = QuizAttempt.query.filter_by(user_id=current_user.id).order_by(QuizAttempt.timestamp.desc()).limit(3).all()
 
+    # Get all certificates for the user
+    certificates = Certificate.query.filter_by(user_id=current_user.id).order_by(Certificate.completion_date.desc()).all()
+
     stats = {
         'quizzes_taken': quizzes_taken,
         'quizzes_passed': quizzes_passed,
@@ -1066,7 +1226,7 @@ def dashboard():
         'recent_attempts': recent_attempts
     }
     
-    return render_template('dashboard.html', stats=stats)    
+    return render_template('dashboard.html', stats=stats, certificates=certificates)    
     
 @app.route("/admin")
 @login_required
@@ -1076,10 +1236,7 @@ def admin_dashboard():
         flash('You do not have permission to access this page.', 'danger')
         return redirect(url_for('dashboard'))
 
-    # Fetch all modules with their submodules and items
-    modules = Module.query.order_by(Module.order.asc()).all()
-
-    return render_template('admin_dashboard.html', modules=modules)
+    return render_template('admin_dashboard.html')
 
 
 
@@ -1167,7 +1324,8 @@ def admin_quizzes():
             
             try:
                 quiz_title = os.path.splitext(filename)[0].replace('_', ' ').title()
-                new_quiz = Quiz(title=quiz_title, filename=filename, category=QUIZ_CATEGORIES[category]['name'])
+                selected_category_data = QUIZ_CATEGORIES[category]
+                new_quiz = Quiz(title=quiz_title, filename=filename, category=selected_category_data['name'], passing_score=selected_category_data['passing_score'])
                 db.session.add(new_quiz)
                 
                 for q_data in parsed_data:
@@ -1191,7 +1349,7 @@ def admin_quizzes():
 
     # Logic for GET request
     quizzes = Quiz.query.order_by(Quiz.id.desc()).all()
-    return render_template('admin_quizzes.html', quizzes=quizzes, categories=QUIZ_CATEGORIES)
+    return render_template('admin_quiz_management.html', quizzes=quizzes, categories=QUIZ_CATEGORIES)
     
 # app.py
 
@@ -1260,7 +1418,7 @@ def admin_labs():
 
     # --- EXISTING LOGIC FOR GET REQUEST ---
     labs = Lab.query.order_by(Lab.id.desc()).all()
-    return render_template('admin_labs.html', labs=labs)    
+    return render_template('admin_lab_management.html', labs=labs)    
     
 # app.py -> ROUTES section
 
@@ -1272,7 +1430,76 @@ def admin_sessions():
         return redirect(url_for('dashboard'))
     
     sessions = PracticalSession.query.all()
-    return render_template('admin_sessions.html', sessions=sessions)
+    return render_template('admin_session_management.html', sessions=sessions)
+
+@app.route("/admin/notes", methods=['GET', 'POST'])
+@login_required
+def admin_notes():
+    if current_user.role != 'admin':
+        flash('You do not have permission to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        if 'note_file' not in request.files:
+            flash('No file part in the request.', 'danger')
+            return redirect(request.url)
+        
+        file = request.files['note_file']
+        quiz_id = request.form.get('quiz_id')
+        
+        if file.filename == '':
+            flash('No file selected.', 'danger')
+            return redirect(request.url)
+
+        if not quiz_id:
+            flash('Please select a quiz to associate with the note.', 'danger')
+            return redirect(request.url)
+
+        selected_quiz = Quiz.query.get(quiz_id)
+        if not selected_quiz:
+            flash('Selected quiz not found.', 'danger')
+            return redirect(request.url)
+
+        # Check if the selected quiz is already associated with another note
+        if Note.query.filter_by(quiz_id=quiz_id).first():
+            flash('This quiz is already associated with another note. Please choose a different one.', 'danger')
+            return redirect(request.url)
+
+        if file and file.filename.endswith('.md'):
+            filename = file.filename
+            
+            if Note.query.filter_by(filename=filename).first():
+                flash(f"A note with the filename '{filename}' already exists.", 'danger')
+                return redirect(request.url)
+
+            markdown_text = file.stream.read().decode("utf-8")
+            
+            try:
+                note_title = os.path.splitext(filename)[0].replace('_', ' ').title()
+                new_note = Note(title=note_title, filename=filename, content=markdown_text, quiz_id=selected_quiz.id)
+                
+                db.session.add(new_note)
+                db.session.commit()
+                flash(f"Successfully uploaded and created Note: '{note_title}'.", 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f"A database error occurred: {e}", "danger")
+
+            return redirect(url_for('admin_notes'))
+        else:
+            flash('Invalid file type. Please upload a .md file.', 'danger')
+            return redirect(request.url)
+
+    # For GET request: Fetch available quizzes
+    # A quiz is available if it's a 'Quiz' category, has 3 questions, and is not already associated with a note.
+    available_quizzes = Quiz.query.filter(
+        Quiz.category == 'Quiz',
+        ~Quiz.id.in_(db.session.query(Note.quiz_id))
+    ).all()
+    print(f"DEBUG: Available quizzes for notes: {available_quizzes}")
+
+    notes = Note.query.order_by(Note.id.desc()).all()
+    return render_template('admin_note_management.html', notes=notes, available_quizzes=available_quizzes)
 
 # ===================================
 # COURSE BUILDER ROUTES (ADMIN)
@@ -1305,7 +1532,13 @@ def admin_course_builder():
 
     # GET Request: Display all modules
     modules = Module.query.order_by(Module.order.asc()).all()
-    return render_template('admin_course_builder.html', modules=modules)
+    user_progress_map = get_user_progress_map(current_user.id)
+    module_progress_data = {}
+    for module in modules:
+        progress_percent = calculate_module_progress(module, user_progress_map)
+        module_progress_data[module.id] = progress_percent
+
+    return render_template('admin_course_management.html', modules=modules, module_progress_data=module_progress_data, user_progress_map=user_progress_map)
 
 @app.route("/admin/module/<int:module_id>/delete", methods=['POST'])
 @login_required
@@ -1334,7 +1567,6 @@ def delete_module(module_id):
         for mod in subsequent_modules:
             mod.order -= 1
             
-        db.session.delete(module_to_delete)
         db.session.commit()
         return jsonify({'status': 'success', 'message': f'Module \'{module_to_delete.title}\' deleted.'})
     except Exception as e:
@@ -1357,25 +1589,19 @@ def move_module(module_id, direction):
         return redirect(url_for('admin_course_builder')) # Invalid direction
 
     if swap_with:
-                try:
-                    # Step 1: Temporarily move one module to a safe, non-conflicting order
-                    # Use a very large negative number to ensure it doesn't conflict with any valid positive order
-                    swap_with.order = -999999 # A value guaranteed not to conflict
-                    db.session.flush() # Apply change to session, but not commit yet
-        
-                    # Step 2: Move the target module to the other module's original position
-                    module_to_move.order = swap_with_order
-                    db.session.flush()
-        
-                    # Step 3: Move the other module to the target module's original position
-                    swap_with.order = original_order
-                    db.session.commit() # Commit all changes in one transaction
-                    flash(f"Module '{module_to_move.title}' has been moved.", 'info')
-                except Exception as e:
-                    db.session.rollback() # Rollback if any step fails
-                    flash(f"Error moving module: {e}", 'danger')
-                    print(f"Error moving module: {e}") # For debugging
-                    return redirect(url_for('admin_course_builder'))
+        try:
+            original_order = module_to_move.order
+            swap_with_order = swap_with.order
+
+            module_to_move.order = swap_with_order
+            swap_with.order = original_order
+            db.session.commit()
+            flash(f"Module '{module_to_move.title}' has been moved.", 'info')
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error moving module: {e}", 'danger')
+            print(f"Error moving module: {e}")
+            return redirect(url_for('admin_course_builder'))
     return redirect(url_for('admin_course_builder'))    
 
 # ===================================
@@ -1409,7 +1635,7 @@ def admin_manage_submodules(module_id):
     # GET Request: Display submodules for the given module
     # The relationship on the Module model automatically orders them.
     submodules = module.submodules.all()
-    return render_template('admin_manage_submodules.html', module=module, submodules=submodules)
+    return render_template('admin_module_detail.html', item=module)
 
 @app.route("/admin/submodule/<int:submodule_id>/edit", methods=['GET', 'POST'])
 @login_required
@@ -1476,7 +1702,8 @@ def move_submodule(submodule_id, direction):
 
     if swap_with:
         original_order = submodule_to_move.order
-        submodule_to_move.order = swap_with.order
+        swap_with_order = swap_with.order
+        submodule_to_move.order = swap_with_order
         swap_with.order = original_order
         db.session.commit()
     return redirect(url_for('admin_manage_submodules', module_id=module_id))
@@ -1485,7 +1712,7 @@ def move_submodule(submodule_id, direction):
 # CONTENT ITEM MANAGEMENT ROUTES (ADMIN)
 # ===================================
 
-@app.route("/admin/submodule/<int:submodule_id>/content", methods=['GET', 'POST'])
+@app.route("/admin/submodule/<int:submodule_id>/content", methods=['GET'])
 @login_required
 def admin_manage_content(submodule_id):
     if current_user.role != 'admin':
@@ -1493,41 +1720,24 @@ def admin_manage_content(submodule_id):
         return redirect(url_for('dashboard'))
         
     submodule = Submodule.query.get_or_404(submodule_id)
-
-    if request.method == 'POST':
-        content_type = request.form.get('content_type')
-        content_id = request.form.get('content_id')
-
-        if not content_type or not content_id:
-            flash('Both content type and a specific item must be selected.', 'danger')
-        else:
-            last_item = ModuleItem.query.filter_by(submodule_id=submodule.id).order_by(ModuleItem.order.desc()).first()
-            new_order = last_item.order + 1 if last_item else 1
-            
-            new_item = ModuleItem(
-                order=new_order, 
-                submodule_id=submodule.id,
-                content_type=content_type,
-                content_id=int(content_id)
-            )
-            db.session.add(new_item)
-            db.session.commit()
-            flash('Content item added successfully.', 'success')
-        return redirect(url_for('admin_manage_content', submodule_id=submodule_id))
-
-    # --- GET Request Logic ---
     # Find all content IDs that are already used in *any* module
     assigned_quiz_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='quiz').all()}
     assigned_lab_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='lab').all()}
     assigned_session_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='session').all()}
+    assigned_note_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='note').all()}
 
     # Fetch available content that is NOT in the assigned lists
     available_quizzes = Quiz.query.filter(Quiz.id.notin_(assigned_quiz_ids)).order_by(Quiz.title).all()
     available_labs = Lab.query.filter(Lab.id.notin_(assigned_lab_ids)).order_by(Lab.title).all()
     available_sessions = PracticalSession.query.filter(PracticalSession.id.notin_(assigned_session_ids)).order_by(PracticalSession.title).all()
+    available_notes = Note.query.filter(Note.id.notin_(assigned_note_ids)).order_by(Note.title).all()
+    print(f"DEBUG: Available notes for submodule {submodule_id}: {available_notes}")
     
     # The submodule's items are fetched via the relationship and are already ordered
     items = submodule.items.all()
+    print(f"DEBUG: In admin_manage_content for submodule {submodule_id}. Items found: {len(items)}")
+    for item in items:
+        print(f"DEBUG: ModuleItem ID: {item.id}, Type: {item.content_type}, Content ID: {item.content_id}, Content Object: {item.content_object}")
 
     return render_template(
         'admin_manage_content.html', 
@@ -1535,12 +1745,13 @@ def admin_manage_content(submodule_id):
         items=items,
         available_quizzes=available_quizzes,
         available_labs=available_labs,
-        available_sessions=available_sessions
+        available_sessions=available_sessions,
+        available_notes=available_notes
     )
 
-@app.route("/admin/item/<int:item_id>/delete", methods=['POST'])
+@app.route("/admin/item/<int:item_id>/unlink", methods=['POST'])
 @login_required
-def delete_content_item(item_id):
+def unlink_content_item(item_id):
     if current_user.role != 'admin':
         return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
     
@@ -1548,6 +1759,7 @@ def delete_content_item(item_id):
     submodule_id = item_to_delete.submodule_id
     
     try:
+        # Re-order subsequent items
         subsequent_items = ModuleItem.query.filter(
             ModuleItem.submodule_id == submodule_id, 
             ModuleItem.order > item_to_delete.order
@@ -1557,7 +1769,35 @@ def delete_content_item(item_id):
             
         db.session.delete(item_to_delete)
         db.session.commit()
-        return jsonify({'status': 'success', 'message': 'Content item removed from submodule.'})
+        return jsonify({'status': 'success', 'message': 'Content item unlinked from submodule.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route("/admin/content/<string:content_type>/<int:content_id>/delete", methods=['POST'])
+@login_required
+def delete_content(content_type, content_id):
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
+
+    try:
+        if content_type == 'quiz':
+            content_to_delete = Quiz.query.get_or_404(content_id)
+        elif content_type == 'lab':
+            content_to_delete = Lab.query.get_or_404(content_id)
+        elif content_type == 'session':
+            content_to_delete = PracticalSession.query.get_or_404(content_id)
+        elif content_type == 'note':
+            content_to_delete = Note.query.get_or_404(content_id)
+        else:
+            return jsonify({'status': 'error', 'message': 'Invalid content type'}), 400
+
+        # Also delete all ModuleItems that point to this content
+        ModuleItem.query.filter_by(content_type=content_type, content_id=content_id).delete()
+
+        db.session.delete(content_to_delete)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': f'{content_type.capitalize()} deleted successfully.'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -1716,10 +1956,10 @@ def create_submodule():
             parent_submodule = Submodule.query.get_or_404(parent_id)
             last_submodule = Submodule.query.filter_by(parent_id=parent_id).order_by(Submodule.order.desc()).first()
             new_order = last_submodule.order + 1 if last_submodule else 1
-            new_submodule = Submodule(title=title, order=new_order, parent_id=parent_id)
+            new_submodule = Submodule(title=title, order=new_order, parent_id=parent_id, module_id=parent_submodule.module_id)
         else:
             module = Module.query.get_or_404(module_id)
-            last_submodule = Submodule.query.filter_by(module_id=module_id).order_by(Submodule.order.desc()).first()
+            last_submodule = Submodule.query.filter_by(module_id=module_id, parent_id=None).order_by(Submodule.order.desc()).first()
             new_order = last_submodule.order + 1 if last_submodule else 1
             new_submodule = Submodule(title=title, order=new_order, module_id=module_id)
 
@@ -1780,11 +2020,29 @@ def create_content_item():
     content_type = data.get('content_type')
     content_id = data.get('content_id')
     
-    if not all([submodule_id, content_type, content_id]):
-        return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
-    
+    if not submodule_id:
+        return jsonify({'status': 'error', 'message': 'Submodule ID is required'}), 400
+    if not content_type:
+        return jsonify({'status': 'error', 'message': 'Content type is required'}), 400
+    if not content_id:
+        return jsonify({'status': 'error', 'message': 'Content ID is required'}), 400
+
     try:
-        submodule = Submodule.query.get_or_404(submodule_id)
+        submodule = Submodule.query.get(submodule_id)
+        if not submodule:
+            return jsonify({'status': 'error', 'message': 'Submodule not found'}), 404
+        
+        content_id = int(content_id) # Ensure content_id is an integer
+
+        # Check for duplicate content item within the same submodule
+        existing_item = ModuleItem.query.filter_by(
+            submodule_id=submodule_id,
+            content_type=content_type,
+            content_id=content_id
+        ).first()
+        if existing_item:
+            return jsonify({'status': 'error', 'message': 'This content item already exists in this submodule.'}), 409 # 409 Conflict
+
         last_item = ModuleItem.query.filter_by(submodule_id=submodule_id).order_by(ModuleItem.order.desc()).first()
         new_order = last_item.order + 1 if last_item else 1
         
@@ -1792,14 +2050,19 @@ def create_content_item():
             order=new_order,
             submodule_id=submodule_id,
             content_type=content_type,
-            content_id=int(content_id)
+            content_id=content_id
         )
         db.session.add(new_item)
         db.session.commit()
         
         return jsonify({'status': 'success', 'message': 'Content item created', 'item_id': new_item.id})
+    except ValueError:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': 'Content ID must be an integer.'}), 400
     except Exception as e:
         db.session.rollback()
+        import traceback
+        traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route("/admin/content/list/<content_type>")
@@ -1809,12 +2072,20 @@ def list_content_by_type(content_type):
         return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
     
     try:
+        # Find all content IDs that are already used in *any* module
+        assigned_quiz_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='quiz').all()}
+        assigned_lab_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='lab').all()}
+        assigned_session_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='session').all()}
+        assigned_note_ids = {item.content_id for item in ModuleItem.query.filter_by(content_type='note').all()}
+
         if content_type == 'quiz':
-            items = Quiz.query.order_by(Quiz.title).all()
+            items = Quiz.query.filter(Quiz.id.notin_(assigned_quiz_ids)).order_by(Quiz.title).all()
         elif content_type == 'lab':
-            items = Lab.query.order_by(Lab.title).all()
+            items = Lab.query.filter(Lab.id.notin_(assigned_lab_ids)).order_by(Lab.title).all()
         elif content_type == 'session':
-            items = PracticalSession.query.order_by(PracticalSession.title).all()
+            items = PracticalSession.query.filter(PracticalSession.id.notin_(assigned_session_ids)).order_by(PracticalSession.title).all()
+        elif content_type == 'note':
+            items = Note.query.filter(Note.id.notin_(assigned_note_ids)).order_by(Note.title).all()
         else:
             return jsonify({'status': 'error', 'message': 'Invalid content type'}), 400
         
