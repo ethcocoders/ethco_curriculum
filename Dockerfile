@@ -17,7 +17,8 @@ EXPOSE 5000
 # Define environment variables for Flask and Gunicorn
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
-ENV SQLALCHEMY_DATABASE_URI="postgresql://webapp_user:password@db:5432/webapp_db" # Assuming 'db' is the service name for your PostgreSQL container in a Docker network
+# Assuming 'db' is the service name for your PostgreSQL container in a Docker network
+ENV SQLALCHEMY_DATABASE_URI="postgresql://webapp_user:password@db:5432/webapp_db"
 
 # Run Gunicorn to serve the Flask application
 # Adjust the number of workers and threads based on your server's CPU cores and expected load
