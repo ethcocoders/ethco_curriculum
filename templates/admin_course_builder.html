@@ -12,5 +12,63 @@
             {% include '_module_list.html' %}
         </div>
     </div>
+
+    <hr>
+
+    <!-- Button to trigger modal -->
+    <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#browseModal">
+        Browse Curriculum
+    </button>
+
+    <!-- Modal -->
+    <div class="modal fade" id="browseModal" tabindex="-1" aria-labelledby="browseModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="browseModalLabel">Browse Curriculum</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Loading curriculum browser...</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() if super }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var browseModal = document.getElementById('browseModal');
+    var modalBody = browseModal.querySelector('.modal-body');
+
+    browseModal.addEventListener('show.bs.modal', function (event) {
+        // Load initial content
+        loadModalContent("{{ url_for('admin_browse', embedded=true) }}");
+    });
+
+    function loadModalContent(url) {
+        modalBody.innerHTML = '<p>Loading...</p>';
+        fetch(url)
+            .then(response => response.text())
+            .then(html => {
+                modalBody.innerHTML = html;
+                // Add event listeners to the new links
+                var links = modalBody.querySelectorAll('a');
+                links.forEach(function (link) {
+                    link.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        loadModalContent(link.href);
+                    });
+                });
+            })
+            .catch(error => {
+                modalBody.innerHTML = '<p>Error loading content.</p>';
+                console.error('Error fetching modal content:', error);
+            });
+    }
+});
+</script>
 {% endblock %}

@@ -1,0 +1,157 @@
+/*
+ * This file will contain styles for the enhanced learning cards on the dashboard.
+ */
+
+:root {
+    --primary-color: #00f2c3;
+    --secondary-color: #fd0080;
+    --bg-dark: #0f0c29;
+    --bg-light: #24243e;
+    --text-light: #ffffff;
+    --card-bg: rgba(50, 50, 70, 0.9);
+    --border-color: rgba(255, 255, 255, 0.1);
+    --info-color: #4ecdc4;
+    --success-color: #51cf66;
+    --warning-color: #ffd93d;
+    --danger-color: #ff6b6b;
+}
+
+.learning-card-link {
+    text-decoration: none; /* Remove underline from the entire card link */
+    display: block; /* Make the link take up the full card area */
+    height: 100%; /* Ensure the link fills the column height */
+}
+
+.learning-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 15px;
+    padding: 2.5rem; /* Increased padding */
+    text-align: center;
+    transition: all 0.3s ease;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: var(--text-light); /* Ensure text is readable */
+    min-height: 250px; /* Added min-height to make cards bigger */
+}
+
+.learning-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.5); /* More pronounced shadow */
+    border-color: var(--secondary-color); /* Change border color on hover */
+}
+
+.learning-card .card-title {
+    font-size: 1.8rem; /* Increased font size */
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: var(--text-light);
+}
+
+.learning-card .card-text {
+    font-size: 1.05rem; /* Increased font size */
+    color: #bbb;
+    line-height: 1.5;
+    margin-bottom: 1.5rem;
+}
+
+.learning-card-icon {
+    width: 100px; /* Increased icon size */
+    height: 100px; /* Increased icon size */
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    font-size: 4rem; /* Increased icon font size */
+    color: white;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+}
+
+.learning-card:hover .learning-card-icon {
+    transform: scale(1.1);
+}
+
+/* Specific card styling */
+
+.learning-card-settings .learning-card-icon {
+    background: linear-gradient(45deg, #6c757d, #495057); /* Bootstrap secondary */
+}
+.learning-card-settings:hover .learning-card-icon {
+    background: linear-gradient(45deg, #495057, #6c757d);
+}
+
+.learning-card-quizzes .learning-card-icon {
+    background: linear-gradient(45deg, #0d6efd, #0a58ca); /* Bootstrap primary */
+}
+.learning-card-quizzes:hover .learning-card-icon {
+    background: linear-gradient(45deg, #0a58ca, #0d6efd);
+}
+
+.learning-card-labs .learning-card-icon {
+    background: linear-gradient(45deg, #198754, #157347); /* Bootstrap success */
+}
+.learning-card-labs:hover .learning-card-icon {
+    background: linear-gradient(45deg, #157347, #198754);
+}
+
+.learning-card-sessions .learning-card-icon {
+    background: linear-gradient(45deg, #0dcaf0, #0aa2c0); /* Bootstrap info */
+}
+.learning-card-sessions:hover .learning-card-icon {
+    background: linear-gradient(45deg, #0aa2c0, #0dcaf0);
+}
+
+.learning-card-certificates .learning-card-icon {
+    background: linear-gradient(45deg, #ffc107, #d39e00); /* Bootstrap warning */
+}
+.learning-card-certificates:hover .learning-card-icon {
+    background: linear-gradient(45deg, #d39e00, #ffc107);
+}
+
+.learning-card-notes .learning-card-icon {
+    background: linear-gradient(45deg, #dc3545, #bb2d3b); /* Bootstrap danger */
+}
+.learning-card-notes:hover .learning-card-icon {
+    background: linear-gradient(45deg, #bb2d3b, #dc3545);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .learning-card {
+        padding: 2rem;
+        min-height: 220px;
+    }
+    .learning-card .card-title {
+        font-size: 1.6rem;
+    }
+    .learning-card-icon {
+        width: 80px;
+        height: 80px;
+        font-size: 3.5rem;
+        margin-bottom: 1.2rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .learning-card {
+        padding: 1.5rem;
+        min-height: 180px;
+    }
+    .learning-card .card-title {
+        font-size: 1.4rem;
+    }
+    .learning-card .card-text {
+        font-size: 0.95rem;
+    }
+    .learning-card-icon {
+        width: 70px;
+        height: 70px;
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+}

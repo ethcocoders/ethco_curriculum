@@ -1,93 +1,225 @@
 {% extends "base.html" %}
 
+{% block head %}
+    {{ super() }}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/course_cards.css') }}">
+{% endblock %}
+
 {% block title %}Manage {{ item.title }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>Manage: {{ item.title }}</h1>
-        <a href="{{ url_for('admin_course_builder') }}" class="btn btn-outline-secondary">Back to Course Management</a>
+        <h1 class="course-page-title">Manage: {{ item.title }}</h1>
+        <div>
+            <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#browseModal">
+                Browse Curriculum
+            </button>
+            <a href="{{ url_for('admin_course_builder') }}" class="btn btn-outline-secondary">Back to Course Management</a>
+        </div>
     </div>
 
-    <div class="submodules-list" data-module-id="{% if item.module_id is defined %}{{ item.module_id }}{% else %}{{ item.id }}{% endif %}" data-parent-id="{% if item.module_id is defined %}{{ item.id }}{% endif %}">
+    <div class="submodules-list">
         {% for submodule in item.submodules or item.children %}
-            <div class="card mb-3 submodule-card" data-submodule-id="{{ submodule.id }}">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <div>
-                        <i class="fas fa-bars submodule-drag-handle" style="cursor: grab; margin-right: 10px;"></i>
-                        <a href="{{ url_for('admin_manage_submodule_content', submodule_id=submodule.id) }}">{{ submodule.title }}</a>
+            <div class="course-submodule-card mb-3" data-submodule-id="{{ submodule.id }}">
+                <div class="card-header d-flex justify-content-between align-items-center"> {# Changed from submodule-title-link to card-header #}
+                    <h6 class="mb-0 flex-grow-1">
+                        <span class="submodule-order">{{ submodule.order }}.</span> {{ submodule.title }}
+                    </h6>
+                    <div class="d-flex align-items-center">
+                        {% if submodule.is_published %}
+                        <span class="badge bg-success me-2">Published</span>
+                        {% else %}
+                        <span class="badge bg-secondary me-2">Draft</span>
+                        {% endif %}
+                        <button class="btn btn-link text-decoration-none text-light submodule-collapse-btn" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSubmodule{{ submodule.id }}" aria-expanded="false" aria-controls="collapseSubmodule{{ submodule.id }}">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
                     </div>
-                    <div>
-                        <button class="btn btn-sm btn-outline-primary" onclick="renameSubmodule({{ submodule.id }})">Rename</button>
-                        <button class="btn btn-sm btn-outline-info" onclick="duplicateSubmodule({{ submodule.id }})">Duplicate</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteSubmodule({{ submodule.id }})">Delete</button>
+                </div>
+                <div id="collapseSubmodule{{ submodule.id }}" class="collapse mt-2">
+                    <div class="admin-actions mb-3">
+                        <button class="btn btn-sm btn-outline-secondary btn-toggle-publish" data-entity-type="submodule" data-entity-id="{{ submodule.id }}" data-is-published="{{ submodule.is_published }}" onclick="event.stopPropagation(); togglePublish(this);">
+                            {{ 'Unpublish' if submodule.is_published else 'Publish' }}
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); renameSubmodule({{ submodule.id }});">Rename</button>
+                        <button class="btn btn-sm btn-outline-info" onclick="event.stopPropagation(); duplicateSubmodule({{ submodule.id }});">Duplicate</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteSubmodule({{ submodule.id }});">Delete</button>
+                    </div>
+                    <div class="content-items-list">
+                        {% for content_item in submodule.items %}
+                        <a href="{% if content_item.content_type == 'quiz' %}{{ url_for('admin_quizzes') }}?id={{ content_item.content_id }}
+                                  {% elif content_item.content_type == 'lab' %}{{ url_for('admin_labs') }}?id={{ content_item.content_id }}
+                                  {% elif content_item.content_type == 'session' %}{{ url_for('admin_sessions') }}?id={{ content_item.content_id }}
+                                  {% else %}#{% endif %}" class="course-content-item-link">
+                            <div class="course-content-item d-flex justify-content-between align-items-center" data-item-id="{{ content_item.id }}">
+                                <span class="content-item-details">
+                                    {% if content_item.content_type == 'quiz' %}
+                                        <i class="fas fa-question-circle me-2 content-icon quiz-icon"></i> Quiz:
+                                    {% elif content_item.content_type == 'lab' %}
+                                        <i class="fas fa-flask me-2 content-icon lab-icon"></i> Lab:
+                                    {% elif content_item.content_type == 'session' %}
+                                        <i class="fas fa-code me-2 content-icon session-icon"></i> Session:
+                                    {% endif %}
+                                    {% if content_item.content_object %}
+                                        {{ content_item.content_object.title }}
+                                    {% else %}
+                                        [Content Not Found]
+                                    {% endif %}
+                                </span>
+                                <div class="d-flex align-items-center">
+                                    {% if content_item.is_published %}
+                                    <span class="badge bg-success me-2">Published</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary me-2">Draft</span>
+                                    {% endif %}
+                                    <button class="btn btn-sm btn-outline-secondary btn-toggle-publish me-2" data-entity-type="module_item" data-entity-id="{{ content_item.id }}" data-is-published="{{ content_item.is_published }}" onclick="event.stopPropagation(); togglePublish(this);">
+                                        {{ 'Unpublish' if content_item.is_published else 'Publish' }}
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger btn-delete-content" onclick="event.stopPropagation(); deleteContentItem({{ content_item.id }});">Delete</button>
+                                </div>
+                            </div>
+                        </a>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
         {% endfor %}
     </div>
 
-    <hr>
+    <hr class="my-4">
 
     <div class="row">
         <div class="col-md-6">
-            <h5>Create New Submodule</h5>
-            <form class="create-submodule-form" data-module-id="{% if item.module_id is defined %}{{ item.module_id }}{% else %}{{ item.id }}{% endif %}" data-parent-id="{% if item.module_id is defined %}{{ item.id }}{% endif %}">
-                <div class="input-group mb-3">
-                    <input type="text" class="form-control" placeholder="Submodule Title" required>
-                    <button class="btn btn-primary" type="submit">Create</button>
+            <div class="course-submodule-card mb-3">
+                <div class="card-body">
+                    <h5 class="mb-3">Create New Submodule</h5>
+                    <form class="create-submodule-form" data-module-id="{% if item.module_id is defined %}{{ item.module_id }}{% else %}{{ item.id }}{% endif %}" data-parent-id="{% if item.module_id is defined %}{{ item.id }}{% endif %}">
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control" placeholder="Submodule Title" required>
+                            <button class="btn btn-primary" type="submit">Create</button>
+                        </div>
+                    </form>
                 </div>
-            </form>
+            </div>
         </div>
         {% if item.module_id is defined %}
         <div class="col-md-6">
-            <h5>Add Content</h5>
-            <form id="add-content-form" data-submodule-id="{{ item.id }}">
-                <div class="input-group mb-3">
-                    <select class="form-select" id="content-type-select" name="content_type" required>
-                        <option value="">-- Select Type --</option>
-                        <option value="quiz">Quiz</option>
-                        <option value="lab">Lab</option>
-                        <option value="session">Session</option>
-                    </select>
-                    <select class="form-select" id="content-id-select" name="content_id" required>
-                        <option value="">-- Select Content --</option>
-                    </select>
-                    <button class="btn btn-primary" type="submit">Add</button>
+            <div class="course-submodule-card mb-3">
+                <div class="card-body">
+                    <h5 class="mb-3">Add Content</h5>
+                    <form id="add-content-form" data-submodule-id="{{ item.id }}">
+                        <div class="input-group mb-3">
+                            <select class="form-select" id="content-type-select" name="content_type" required>
+                                <option value="">-- Select Type --</option>
+                                <option value="quiz">Quiz</option>
+                                <option value="lab">Lab</option>
+                                <option value="session">Session</option>
+                            </select>
+                            <select class="form-select" id="content-id-select" name="content_id" required>
+                                <option value="">-- Select Content --</option>
+                            </select>
+                            <button class="btn btn-primary" type="submit">Add</button>
+                        </div>
+                    </form>
                 </div>
-            </form>
+            </div>
         </div>
         {% endif %}
     </div>
 
     {% if item.module_id is defined %}
-    <div class="content-items-list mt-4" data-submodule-id="{{ item.id }}">
-        <h5>Content Items</h5>
-        <ul class="list-group">
-            {% for content_item in item.items %}
-                <li class="list-group-item d-flex justify-content-between align-items-center" data-item-id="{{ content_item.id }}">
-                    <div>
-                        <i class="fas fa-bars content-drag-handle" style="cursor: grab; margin-right: 10px;"></i>
-                        {% if content_item.content_object %}
-                            {{ content_item.content_object.title }} ({{ content_item.content_type }})
-                        {% else %}
-                            [Content Not Found] ({{ content_item.content_type }})
-                        {% endif %}
-                    </div>
-                        <div>
-                            <button class="btn btn-sm btn-outline-warning btn-unlink-content" data-item-id="{{ content_item.id }}">Unlink</button>
-                            <button class="btn btn-sm btn-outline-danger btn-delete-content" data-content-type="{{ content_item.content_type }}" data-content-id="{{ content_item.content_id }}">Delete</button>
-                        </div>
-                </li>
-            {% endfor %}
-        </ul>
+    <div class="content-items-list mt-4">
+        <h5 class="mb-3">Content Items</h5>
+        {% for content_item in item.items %}
+        <a href="{% if content_item.content_type == 'quiz' %}{{ url_for('admin_quizzes') }}?id={{ content_item.content_id }}
+                  {% elif content_item.content_type == 'lab' %}{{ url_for('admin_labs') }}?id={{ content_item.content_id }}
+                  {% elif content_item.content_type == 'session' %}{{ url_for('admin_sessions') }}?id={{ content_item.content_id }}
+                  {% else %}#{% endif %}" class="course-content-item-link">
+            <div class="course-content-item d-flex justify-content-between align-items-center" data-item-id="{{ content_item.id }}">
+                <span class="content-item-details">
+                    {% if content_item.content_type == 'quiz' %}
+                        <i class="fas fa-question-circle me-2 content-icon quiz-icon"></i> Quiz:
+                    {% elif content_item.content_type == 'lab' %}
+                        <i class="fas fa-flask me-2 content-icon lab-icon"></i> Lab:
+                    {% elif content_item.content_type == 'session' %}
+                        <i class="fas fa-code me-2 content-icon session-icon"></i> Session:
+                    {% endif %}
+                    {% if content_item.content_object %}
+                        {{ content_item.content_object.title }}
+                    {% else %}
+                        [Content Not Found]
+                    {% endif %}
+                </span>
+                <div class="d-flex align-items-center">
+                    {% if content_item.is_published %}
+                    <span class="badge bg-success me-2">Published</span>
+                    {% else %}
+                    <span class="badge bg-secondary me-2">Draft</span>
+                    {% endif %}
+                    <button class="btn btn-sm btn-outline-secondary btn-toggle-publish me-2" data-entity-type="module_item" data-entity-id="{{ content_item.id }}" data-is-published="{{ content_item.is_published }}" onclick="event.stopPropagation(); togglePublish(this);">
+                        {{ 'Unpublish' if content_item.is_published else 'Publish' }}
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger btn-delete-content" onclick="event.stopPropagation(); deleteContentItem({{ content_item.id }});">Delete</button>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
     </div>
     {% endif %}
+
+    <!-- Modal -->
+    <div class="modal fade" id="browseModal" tabindex="-1" aria-labelledby="browseModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="browseModalLabel">Browse Curriculum</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Loading curriculum browser...</p>
+                </div>
+            </div>
+        </div>
+    </div>
 
 </div>
 {% endblock %}
 
 {% block scripts %}
+{{ super() if super }}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
-<script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin_course_management.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var browseModal = document.getElementById('browseModal');
+    var modalBody = browseModal.querySelector('.modal-body');
+
+    browseModal.addEventListener('show.bs.modal', function (event) {
+        // Load initial content
+        loadModalContent("{{ url_for('admin_browse', embedded=true) }}");
+    });
+
+    function loadModalContent(url) {
+        modalBody.innerHTML = '<p>Loading...</p>';
+        fetch(url)
+            .then(response => response.text())
+            .then(html => {
+                modalBody.innerHTML = html;
+                // Add event listeners to the new links
+                var links = modalBody.querySelectorAll('a');
+                links.forEach(function (link) {
+                    link.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        loadModalContent(link.href);
+                    });
+                });
+            })
+            .catch(error => {
+                modalBody.innerHTML = '<p>Error loading content.</p>';
+                console.error('Error fetching modal content:', error);
+            });
+    }
+});
+</script>
 {% endblock %}

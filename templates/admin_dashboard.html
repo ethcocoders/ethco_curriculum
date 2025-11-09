@@ -1,128 +1,129 @@
 {% extends "base.html" %}
 
-{% block title %}Admin Dashboard{% endblock %}
-
-{% block content %}
-<div class="d-flex" id="wrapper">
-    <!-- Sidebar -->
-    <div class="bg-light border-right" id="sidebar-wrapper">
-        <div class="sidebar-heading">Admin Panel</div>
-        <div class="list-group list-group-flush">
-            <a href="{{ url_for('admin_dashboard') }}" class="list-group-item list-group-item-action bg-light"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a>
-            <a href="{{ url_for('admin_course_builder') }}" class="list-group-item list-group-item-action bg-light"><i class="fas fa-book me-2"></i>Course Management</a>
-            <a href="{{ url_for('admin_quizzes') }}" class="list-group-item list-group-item-action bg-light"><i class="fas fa-question-circle me-2"></i>Quiz Management</a>
-            <a href="{{ url_for('admin_labs') }}" class="list-group-item list-group-item-action bg-light"><i class="fas fa-flask me-2"></i>Lab Management</a>
-            <a href="{{ url_for('admin_sessions') }}" class="list-group-item list-group-item-action bg-light"><i class="fas fa-laptop-code me-2"></i>Session Management</a>
-            <a href="{{ url_for('admin_notes') }}" class="list-group-item list-group-item-action bg-light"><i class="fas fa-sticky-note me-2"></i>Note Management</a>
-        </div>
-    </div>
-    <!-- /#sidebar-wrapper -->
-
-    <!-- Page Content -->
-    <div id="page-content-wrapper">
-        <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
-            <button class="btn btn-primary" id="menu-toggle">Toggle Menu</button>
-        </nav>
-
-        <div class="container-fluid">
-            <h1 class="mt-4">Admin Dashboard</h1>
-            <div class="row mt-4">
-                <div class="col-lg-12 mb-4">
-                    <div class="card bg-primary text-white shadow">
-                        <div class="card-body">
-                            <h5 class="card-title">Welcome, Admin!</h5>
-                            <p class="card-text">Manage your learning platform content, users, and courses efficiently from here.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row">
-                <!-- Quick Stats Card -->
-                <div class="col-lg-4 col-md-6 mb-4">
-                    <div class="card border-left-info shadow h-100 py-2">
-                        <div class="card-body">
-                            <div class="row no-gutters align-items-center">
-                                <div class="col mr-2">
-                                    <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                        Total Courses</div>
-                                    <div class="h5 mb-0 font-weight-bold text-gray-800">5</div>
-                                </div>
-                                <div class="col-auto">
-                                    <i class="fas fa-book fa-2x text-gray-300"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Another Quick Stat Card -->
-                <div class="col-lg-4 col-md-6 mb-4">
-                    <div class="card border-left-success shadow h-100 py-2">
-                        <div class="card-body">
-                            <div class="row no-gutters align-items-center">
-                                <div class="col mr-2">
-                                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                        Total Users</div>
-                                    <div class="h5 mb-0 font-weight-bold text-gray-800">120</div>
-                                </div>
-                                <div class="col-auto">
-                                    <i class="fas fa-users fa-2x text-gray-300"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Pending Items Card -->
-                <div class="col-lg-4 col-md-6 mb-4">
-                    <div class="card border-left-warning shadow h-100 py-2">
-                        <div class="card-body">
-                            <div class="row no-gutters align-items-center">
-                                <div class="col mr-2">
-                                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                        Pending Reviews</div>
-                                    <div class="h5 mb-0 font-weight-bold text-gray-800">3</div>
-                                </div>
-                                <div class="col-auto">
-                                    <i class="fas fa-comments fa-2x text-gray-300"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <!-- End of Row -->
-
-            <!-- Placeholder for Recent Activity/Logs -->
-            <div class="row">
-                <div class="col-lg-12 mb-4">
-                    <div class="card shadow mb-4">
-                        <div class="card-header py-3">
-                            <h6 class="m-0 font-weight-bold text-primary">Recent Activity</h6>
-                        </div>
-                        <div class="card-body">
-                            <p>No recent activity to display.</p>
-                            <!-- Dynamic content would go here -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- /#page-content-wrapper -->
-</div>
-<!-- /#wrapper -->
+{% block head %}
+    {{ super() }}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_dashboard.css') }}">
+    <title>Admin Dashboard</title>
 {% endblock %}
 
-{% block scripts %}
+{% block content %}
+<div class="admin-dashboard-wrapper">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar">
+        <div class="sidebar-header">Curriculum Admin</div>
+        <nav class="sidebar-nav">
+            <ul>
+                <li><a href="{{ url_for('admin_dashboard') }}">Dashboard</a></li>
+                <li><a href="{{ url_for('admin_browse') }}">Browse Course</a></li>
+                <li><a href="{{ url_for('admin_course_builder') }}">Course Management</a></li>
+                <li><a href="{{ url_for('admin_quizzes') }}">Quiz Management</a></li>
+                <li><a href="{{ url_for('admin_labs') }}">Lab Management</a></li>
+                <li><a href="{{ url_for('admin_sessions') }}">Session Management</a></li>
+                <!-- Add more admin links here -->
+            </ul>
+        </nav>
+    </aside>
+    <!-- /Sidebar -->
+
+    <!-- Main Content Area -->
+    <main class="admin-main-content">
+        <header class="admin-header">
+            <button class="menu-toggle" id="menu-toggle">☰</button>
+            <div class="header-title">Admin Dashboard</div>
+            <nav class="header-nav">
+                <ul>
+                    <li><a href="{{ url_for('index') }}">Home</a></li>
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle">{{ current_user.username }}</a>
+                        <ul class="dropdown-menu">
+                            <li><a href="{{ url_for('profile_settings') }}">Profile</a></li>
+                            <li><a href="{{ url_for('logout') }}">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </nav>
+        </header>
+
+        <div class="admin-content-body">
+            <h1>Admin Dashboard</h1>
+            <p>Welcome to the administration panel. Use the sidebar to navigate through different management sections.</p>
+
+            <div class="dashboard-cards">
+                <a href="{{ url_for('admin_browse') }}" class="card-link">
+                    <div class="card">
+                        <div class="card-icon"><i class="fas fa-folder-open"></i></div>
+                        <div class="card-info">
+                            <div class="card-label">Browse Course</div>
+                        </div>
+                    </div>
+                </a>
+
+                <div class="card">
+                    <div class="card-icon"><i class="fas fa-book"></i></div>
+                    <div class="card-info">
+                        <div class="card-label">Courses</div>
+                        <div class="card-value">5</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-icon"><i class="fas fa-users"></i></div>
+                    <div class="card-info">
+                        <div class="card-label">Users</div>
+                        <div class="card-value">120</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-icon"><i class="fas fa-clipboard-list"></i></div>
+                    <div class="card-info">
+                        <div class="card-label">Quizzes</div>
+                        <div class="card-value">30</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-icon"><i class="fas fa-flask"></i></div>
+                    <div class="card-info">
+                        <div class="card-label">Labs</div>
+                        <div class="card-value">15</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overview-section">
+                <h2>Overview</h2>
+                <p>This section will display key metrics and quick links for administrative tasks.
+                    The specific content here can be customized based on the most frequent needs of an administrator.
+                    For example, recent user registrations, pending content approvals, or system health status.</p>
+                <p>Use the navigation on the left to manage courses, quizzes, labs, and sessions.</p>
+            </div>
+        </div>
+    </main>
+    <!-- /Main Content Area -->
+
+</div>
+
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var sidebarToggle = document.getElementById('menu-toggle');
-        if (sidebarToggle) {
-            sidebarToggle.addEventListener('click', function(e) {
-                e.preventDefault();
-                document.getElementById('wrapper').classList.toggle('toggled');
+    document.getElementById('menu-toggle').addEventListener('click', function() {
+        document.querySelector('.admin-dashboard-wrapper').classList.toggle('toggled');
+    });
+
+    // Dropdown functionality for the header nav
+    document.querySelectorAll('.admin-header .dropdown-toggle').forEach(item => {
+        item.addEventListener('click', function(event) {
+            event.preventDefault();
+            this.nextElementSibling.classList.toggle('show');
+        });
+    });
+
+    // Close the dropdown if the user clicks outside of it
+    window.addEventListener('click', function(event) {
+        if (!event.target.matches('.admin-header .dropdown-toggle')) {
+            document.querySelectorAll('.admin-header .dropdown-menu').forEach(dropdown => {
+                if (dropdown.classList.contains('show')) {
+                    dropdown.classList.remove('show');
+                }
             });
         }
     });

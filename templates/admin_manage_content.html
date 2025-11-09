@@ -1,259 +1,214 @@
 {% extends "base.html" %}
 
-{% block title %}Manage Content for {{ submodule.title }}{% endblock %}
-
 {% block content %}
 <div class="container mt-4">
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard') }}">Admin Dashboard</a></li>
             <li class="breadcrumb-item"><a href="{{ url_for('admin_course_builder') }}">Course Builder</a></li>
-            <li class="breadcrumb-item"><a href="{{ url_for('admin_manage_submodules', module_id=submodule.module.id) }}">Module: {{ submodule.module.title }}</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Submodule: {{ submodule.title }}</li>
+            {% if entity_type == 'module' %}
+                <li class="breadcrumb-item active" aria-current="page">{{ entity.title }} Content Management</li>
+            {% elif entity_type == 'submodule' %}
+                <li class="breadcrumb-item"><a href="{{ url_for('admin_module_content_management', module_id=entity.module_id) }}">{{ entity.module.title }}</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ entity.title }} Content Management</li>
+            {% endif %}
         </ol>
     </nav>
 
-    <h2 class="mb-4">Manage Content for Submodule: {{ submodule.title }}</h2>
+    <h1 class="mb-4">{{ entity.title }} Content Management</h1>
 
     <div class="row">
-        <div class="col-md-6">
+        <div class="col-md-8">
             <div class="card mb-4">
-                <div class="card-header">Current Content Items</div>
-                <div class="card-body">
-                    {% if items %}
-                    <ul class="list-group mb-3" id="content-items-list">
-                        {% for item in items %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center" data-item-id="{{ item.id }}">
-                            <span>
-                                {% if item.content_type == 'quiz' %}
-                                    <i class="fas fa-question-circle text-info me-2"></i>
-                                {% elif item.content_type == 'lab' %}
-                                    <i class="fas fa-flask text-warning me-2"></i>
-                                {% elif item.content_type == 'session' %}
-                                    <i class="fas fa-laptop-code text-primary me-2"></i>
-                                {% elif item.content_type == 'note' %}
-                                    <i class="fas fa-sticky-note text-success me-2"></i>
-                                {% endif %}
-                                {% if item.content_object %}
-                                    {{ item.content_object.title }} ({{ item.content_type | capitalize }})
-                                {% else %}
-                                    [Content Not Found] ({{ item.content_type | capitalize }})
-                                {% endif %}
-                            </span>
-                            <div>
-                                <button type="button" class="btn btn-sm btn-outline-secondary move-up-btn" data-item-id="{{ item.id }}" {% if loop.first %}disabled{% endif %}>
-                                    <i class="fas fa-arrow-up"></i>
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary move-down-btn" data-item-id="{{ item.id }}" {% if loop.last %}disabled{% endif %}>
-                                    <i class="fas fa-arrow-down"></i>
-                                </button>
-                                <button type="button" class="btn btn-sm btn-danger delete-item-btn" data-item-id="{{ item.id }}">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    {% else %}
-                    <p class="text-muted">No content items assigned to this submodule yet.</p>
-                    {% endif %}
-                    <button class="btn btn-info" onclick="window.location.reload();">Refresh Order</button>
+                <div class="card-header">
+                    Contained Items
                 </div>
+                <ul class="list-group list-group-flush">
+                    {% if entity_type == 'module' %}
+                        {% for submodule in entity.submodules %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-folder"></i> <strong>Submodule:</strong> {{ submodule.title }}
+                                    <span class="badge bg-secondary ms-2">Order: {{ submodule.order }}</span>
+                                </div>
+                                <div>
+                                    <a href="{{ url_for('admin_submodule_content_management', submodule_id=submodule.id) }}" class="btn btn-sm btn-info me-2">Manage Content</a>
+                                    <a href="{{ url_for('edit_submodule', submodule_id=submodule.id) }}" class="btn btn-sm btn-warning me-2">Edit</a>
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="deleteSubmodule({{ submodule.id }}, '{{ submodule.title }}')">Delete</button>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    {% elif entity_type == 'submodule' %}
+                        {% for item in entity.items %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-file"></i> <strong>{{ item.content_type | capitalize }}:</strong> 
+                                    {% if item.content_object %}
+                                        {{ item.content_object.title }}
+                                    {% else %}
+                                        (Content not found)
+                                    {% endif %}
+                                    <span class="badge bg-secondary ms-2">Order: {{ item.order }}</span>
+                                    {% if item.content_path %}
+                                        <small class="text-muted ms-2">Path: {{ item.content_path }}</small>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <a href="#" class="btn btn-sm btn-warning me-2">Edit</a>
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="deleteModuleItem({{ item.id }}, '{{ item.content_object.title if item.content_object else "Unknown" }}')">Delete</button>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    {% endif %}
+                    {% if not entity.submodules and not entity.items %}
+                        <li class="list-group-item text-center text-muted">No items in this {{ entity_type }}.</li>
+                    {% endif %}
+                </ul>
             </div>
         </div>
 
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card">
-                <div class="card-header">Add New Content</div>
+                <div class="card-header">
+                    Add New Item
+                </div>
                 <div class="card-body">
-                    <h5 class="card-title">Add Quiz</h5>
-                    <form class="add-content-form" data-content-type="quiz">
-                        <div class="input-group mb-3">
-                            <select class="form-select" name="content_id" required>
-                                <option value="">Select a Quiz</option>
-                                {% for quiz in available_quizzes %}
-                                <option value="{{ quiz.id }}">{{ quiz.title }}</option>
-                                {% endfor %}
-                            </select>
-                            <button class="btn btn-primary" type="submit">Add Quiz</button>
-                        </div>
-                    </form>
-
-                    <h5 class="card-title mt-4">Add Lab</h5>
-                    <form class="add-content-form" data-content-type="lab">
-                        <div class="input-group mb-3">
-                            <select class="form-select" name="content_id" required>
-                                <option value="">Select a Lab</option>
-                                {% for lab in available_labs %}
-                                <option value="{{ lab.id }}">{{ lab.title }}</option>
-                                {% endfor %}
-                            </select>
-                            <button class="btn btn-primary" type="submit">Add Lab</button>
-                        </div>
-                    </form>
-
-                    <h5 class="card-title mt-4">Add Session</h5>
-                    <form class="add-content-form" data-content-type="session">
-                        <div class="input-group mb-3">
-                            <select class="form-select" name="content_id" required>
-                                <option value="">Select a Session</option>
-                                {% for session_item in available_sessions %}
-                                <option value="{{ session_item.id }}">{{ session_item.title }}</option>
-                                {% endfor %}
-                            </select>
-                            <button class="btn btn-primary" type="submit">Add Session</button>
-                        </div>
-                    </form>
-
-                    <h5 class="card-title mt-4">Add Note</h5>
-                    <form class="add-content-form" data-content-type="note">
-                        <div class="input-group mb-3">
-                            <select class="form-select" name="content_id" required>
-                                <option value="">Select a Note</option>
-                                {% for note in available_notes %}
-                                <option value="{{ note.id }}">{{ note.title }}</option>
-                                {% endfor %}
-                            </select>
-                            <button class="btn btn-primary" type="submit">Add Note</button>
-                        </div>
-                    </form>
+                    {% if entity_type == 'module' %}
+                        <form action="{{ url_for('admin_manage_submodules', module_id=entity.id) }}" method="POST">
+                            <div class="mb-3">
+                                <label for="submoduleTitle" class="form-label">New Submodule Title</label>
+                                <input type="text" class="form-control" id="submoduleTitle" name="title" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Add Submodule</button>
+                        </form>
+                    {% elif entity_type == 'submodule' %}
+                        <form action="{{ url_for('add_module_item', submodule_id=entity.id) }}" method="POST">
+                            <div class="mb-3">
+                                <label for="itemType" class="form-label">Content Type</label>
+                                <select class="form-select" id="itemType" name="content_type" required>
+                                    <option value="">Select Type</option>
+                                    <option value="quiz">Quiz</option>
+                                    <option value="lab">Lab</option>
+                                    <option value="session">Session</option>
+                                    <option value="note">Note (Markdown File)</option>
+                                </select>
+                            </div>
+                            <div class="mb-3" id="contentIdField" style="display: none;">
+                                <label for="contentId" class="form-label">Select Content</label>
+                                <select class="form-select" id="contentId" name="content_id">
+                                    <!-- Options will be loaded dynamically via JavaScript -->
+                                </select>
+                            </div>
+                            <div class="mb-3" id="contentPathField" style="display: none;">
+                                <label for="contentPath" class="form-label">Content Path (e.g., static/uploads/curriculum/module/submodule/file.md)</label>
+                                <input type="text" class="form-control" id="contentPath" name="content_path">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Add Module Item</button>
+                        </form>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-{{ super() }}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const submoduleId = {{ submodule.id }};
+        const itemTypeSelect = document.getElementById('itemType');
+        const contentIdField = document.getElementById('contentIdField');
+        const contentIdSelect = document.getElementById('contentId');
+        const contentPathField = document.getElementById('contentPathField');
+        const contentPathInput = document.getElementById('contentPath');
 
-        // Handle Add Content Forms
-        document.querySelectorAll('.add-content-form').forEach(form => {
-            form.addEventListener('submit', async function(event) {
-                event.preventDefault();
-                const content_type = this.dataset.contentType;
-                const content_id = this.querySelector('select[name="content_id"]').value;
+        if (itemTypeSelect) {
+            itemTypeSelect.addEventListener('change', function() {
+                const selectedType = this.value;
+                
+                // Reset visibility and required attributes
+                contentIdField.style.display = 'none';
+                contentIdSelect.removeAttribute('required');
+                contentPathField.style.display = 'none';
+                contentPathInput.removeAttribute('required');
+                contentIdSelect.innerHTML = ''; // Clear previous options
 
-                if (!content_id) {
-                    alert('Please select an item.');
-                    return;
+                if (selectedType === 'quiz' || selectedType === 'lab' || selectedType === 'session') {
+                    contentIdField.style.display = 'block';
+                    contentIdSelect.setAttribute('required', 'required');
+                    fetchContentOptions(selectedType);
+                } else if (selectedType === 'note') {
+                    contentPathField.style.display = 'block';
+                    contentPathInput.setAttribute('required', 'required');
                 }
-
-                try {
-                    const response = await fetch('/admin/item/create', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            submodule_id: submoduleId,
-                            content_type: content_type,
-                            content_id: content_id
-                        })
-                    });
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        alert(data.message);
-                        window.location.reload();
-                    } else {
-                        alert('Error: ' + data.message);
-                    }
-                } catch (error) {
-                    console.error('Error adding content item:', error);
-                    alert('An error occurred while adding the content item.');
-                }
-            });
-        });
-
-        // Handle Delete Content Item
-        document.querySelectorAll('.delete-item-btn').forEach(button => {
-            button.addEventListener('click', async function() {
-                if (!confirm('Are you sure you want to remove this content item from the submodule?')) {
-                    return;
-                }
-                const itemId = this.dataset.itemId;
-                try {
-                    const response = await fetch(`/admin/item/${itemId}/delete`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        alert(data.message);
-                        window.location.reload();
-                    } else {
-                        alert('Error: ' + data.message);
-                    }
-                } catch (error) {
-                    console.error('Error deleting content item:', error);
-                    alert('An error occurred while deleting the content item.');
-                }
-            });
-        });
-
-        // Handle Move Content Item
-        document.querySelectorAll('.move-up-btn, .move-down-btn').forEach(button => {
-            button.addEventListener('click', async function() {
-                const itemId = this.dataset.itemId;
-                const direction = this.classList.contains('move-up-btn') ? 'up' : 'down';
-                try {
-                    const response = await fetch(`/admin/item/${itemId}/move/${direction}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        // No alert, just reorder visually or reload
-                        window.location.reload();
-                    } else {
-                        alert('Error: ' + data.message);
-                    }
-                } catch (error) {
-                    console.error('Error moving content item:', error);
-                    alert('An error occurred while moving the content item.');
-                }
-            });
-        });
-
-        // Initialize SortableJS for drag-and-drop reordering
-        const el = document.getElementById('content-items-list');
-        if (el) {
-            new Sortable(el, {
-                animation: 150,
-                ghostClass: 'blue-background-class',
-                onEnd: async function (evt) {
-                    const newOrder = Array.from(el.children).map(item => item.dataset.itemId);
-                    try {
-                        const response = await fetch('/admin/items/reorder', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                new_order: newOrder,
-                                parent_id: submoduleId // Pass submodule_id to scope the reorder
-                            })
-                        });
-                        const data = await response.json();
-                        if (data.status !== 'success') {
-                            alert('Error reordering items: ' + data.message);
-                            window.location.reload(); // Reload on error to reset order
-                        }
-                    } catch (error) {
-                        console.error('Error reordering items:', error);
-                        alert('An error occurred during reordering.');
-                        window.location.reload(); // Reload on error
-                    }
-                },
             });
         }
+
+        function fetchContentOptions(type) {
+            fetch(`/admin/api/get_content_by_type/${type}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        data.content.forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item.id;
+                            option.textContent = item.title;
+                            contentIdSelect.appendChild(option);
+                        });
+                    } else {
+                        console.error('Error fetching content:', data.message);
+                    }
+                })
+                .catch(error => console.error('Fetch error:', error));
+        }
     });
+
+    function deleteSubmodule(submoduleId, submoduleTitle) {
+        if (confirm(`Are you sure you want to delete the submodule "${submoduleTitle}"? This action cannot be undone.`)) {
+            fetch(`/admin/submodule/${submoduleId}/delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Include CSRF token if you have one
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert(data.message);
+                    location.reload(); // Reload the page to reflect changes
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while deleting the submodule.');
+            });
+        }
+    }
+
+    function deleteModuleItem(moduleItemId, itemTitle) {
+        if (confirm(`Are you sure you want to delete the module item "${itemTitle}"? This action cannot be undone.`)) {
+            fetch(`/admin/module_item/${moduleItemId}/delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Include CSRF token if you have one
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert(data.message);
+                    location.reload(); // Reload the page to reflect changes
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while deleting the module item.');
+            });
+        }
+    }
 </script>
 {% endblock %}

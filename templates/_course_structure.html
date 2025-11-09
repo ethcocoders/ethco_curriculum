@@ -11,7 +11,7 @@
             {% endif %}
         </div>
         <div>
-            <button class="btn btn-sm btn-outline-secondary btn-toggle-publish">
+            <button class="btn btn-sm btn-outline-secondary btn-toggle-publish" data-entity-type="module" data-entity-id="{{ module.id }}" data-is-published="{{ module.is_published }}">
                 {{ 'Unpublish' if module.is_published else 'Publish' }}
             </button>
             <button class="btn btn-sm btn-outline-primary" onclick="renameModule({{ module.id }})">Rename</button>
@@ -37,10 +37,18 @@
                     <div class="d-flex align-items-center">
                         <i class="fas fa-bars submodule-drag-handle me-2" style="cursor: grab;"></i>
                         <a href="{{ url_for('admin_manage_submodule_content', submodule_id=submodule.id) }}" class="text-decoration-none text-dark me-2">{{ submodule.title }}</a>
+                        {% if submodule.is_published %}
+                        <span class="badge badge-success me-2">Published</span>
+                        {% else %}
+                        <span class="badge badge-secondary me-2">Draft</span>
+                        {% endif %}
                         <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-submodule-{{ submodule.id }}" aria-expanded="false" aria-controls="collapse-submodule-{{ submodule.id }}">
                             <i class="fas fa-chevron-down collapse-icon"></i>
                         </button>
                     </div>        <div>
+            <button class="btn btn-sm btn-outline-secondary btn-toggle-publish" data-entity-type="submodule" data-entity-id="{{ submodule.id }}" data-is-published="{{ submodule.is_published }}">
+                {{ 'Unpublish' if submodule.is_published else 'Publish' }}
+            </button>
             <button class="btn btn-sm btn-outline-primary" onclick="renameSubmodule({{ submodule.id }})">Rename</button>
             <button class="btn btn-sm btn-outline-info" onclick="duplicateSubmodule({{ submodule.id }})">Duplicate</button>
             <button class="btn btn-sm btn-outline-danger" onclick="deleteSubmodule({{ submodule.id }})">Delete</button>
@@ -55,8 +63,16 @@
                     <div>
                         <i class="fas fa-bars content-drag-handle" style="cursor: grab; margin-right: 10px;"></i>
                         {{ item.content_object.title }} ({{ item.content_type }})
+                        {% if item.is_published %}
+                        <span class="badge badge-success ms-2">Published</span>
+                        {% else %}
+                        <span class="badge badge-secondary ms-2">Draft</span>
+                        {% endif %}
                     </div>
                     <div>
+                        <button class="btn btn-sm btn-outline-secondary btn-toggle-publish me-2" data-entity-type="module_item" data-entity-id="{{ item.id }}" data-is-published="{{ item.is_published }}">
+                            {{ 'Unpublish' if item.is_published else 'Publish' }}
+                        </button>
                         <button class="btn btn-sm btn-outline-danger btn-delete-content" data-item-id="{{ item.id }}">Delete</button>
                     </div>
                 </div>
@@ -72,4 +88,107 @@
     </div>
 </div>
 </div>
+{% endmacro %}
+
+{% macro render_module_admin(module, module_progress_data) %}
+<a class="course-module-card-link" href="{{ url_for('admin_module_content_management', module_id=module.id) }}">
+    <div class="course-module-card mb-4" data-module-id="{{ module.id }}">
+        <div class="card-header d-flex justify-content-between align-items-center" id="headingModule{{ module.id }}">
+            <h5 class="mb-0 flex-grow-1">
+                <span class="module-order">{{ module.order }}.</span> {{ module.title }}
+            </h5>
+            <div class="d-flex align-items-center">
+                <span class="badge bg-info module-progress-badge">{{ module_progress_data.get(module.id, 0) }}% Complete</span>
+                <button class="btn btn-link text-decoration-none text-light module-collapse-btn" type="button" data-bs-toggle="collapse" data-bs-target="#collapseModule{{ module.id }}" aria-expanded="false" aria-controls="collapseModule{{ module.id }}" onclick="event.stopPropagation();">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="collapseModule{{ module.id }}" class="collapse" aria-labelledby="headingModule{{ module.id }}">
+            <div class="card-body">
+                <div class="admin-actions mb-3">
+                    <button class="btn btn-sm btn-outline-secondary btn-toggle-publish" data-entity-type="module" data-entity-id="{{ module.id }}" data-is-published="{{ module.is_published }}" onclick="event.stopPropagation(); togglePublish(this);">
+                        {{ 'Unpublish' if module.is_published else 'Publish' }}
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); renameModule({{ module.id }});">Rename</button>
+                    <button class="btn btn-sm btn-outline-info" onclick="event.stopPropagation(); duplicateModule({{ module.id }});">Duplicate</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteModule({{ module.id }});">Delete</button>
+                </div>
+                <div class="submodules-list">
+                    {% for submodule in module.submodules %}
+                        {% if not submodule.parent_id %}
+                            {{ render_submodule_admin(submodule) }}
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</a>
+{% endmacro %}
+
+{% macro render_submodule_admin(submodule) %}
+<a class="course-submodule-card-link" href="{{ url_for('admin_manage_submodule_content', submodule_id=submodule.id) }}">
+    <div class="course-submodule-card mb-3" data-submodule-id="{{ submodule.id }}">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 flex-grow-1">
+                <span class="submodule-order">{{ submodule.order }}.</span> {{ submodule.title }}
+            </h6>
+            <div class="d-flex align-items-center">
+                {% if submodule.is_published %}
+                <span class="badge bg-success me-2">Published</span>
+                {% else %}
+                <span class="badge bg-secondary me-2">Draft</span>
+                {% endif %}
+                <button class="btn btn-link text-decoration-none text-light submodule-collapse-btn" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSubmodule{{ submodule.id }}" aria-expanded="false" aria-controls="collapseSubmodule{{ submodule.id }}" onclick="event.stopPropagation();">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </div>
+        </div>
+        <div id="collapseSubmodule{{ submodule.id }}" class="collapse mt-2">
+            <div class="admin-actions mb-3">
+                <button class="btn btn-sm btn-outline-secondary btn-toggle-publish" data-entity-type="submodule" data-entity-id="{{ submodule.id }}" data-is-published="{{ submodule.is_published }}" onclick="event.stopPropagation(); togglePublish(this);">
+                    {{ 'Unpublish' if submodule.is_published else 'Publish' }}
+                </button>
+                <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); renameSubmodule({{ submodule.id }});">Rename</button>
+                <button class="btn btn-sm btn-outline-info" onclick="event.stopPropagation(); duplicateSubmodule({{ submodule.id }});">Duplicate</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteSubmodule({{ submodule.id }});">Delete</button>
+            </div>
+            <div class="content-items-list">
+                {% for item in submodule.items %}
+                <div class="course-content-item d-flex justify-content-between align-items-center" data-item-id="{{ item.id }}">
+                    <span class="content-item-details">
+                        {% if item.content_type == 'quiz' %}
+                            <i class="fas fa-question-circle me-2 content-icon quiz-icon"></i> Quiz:
+                        {% elif item.content_type == 'lab' %}
+                            <i class="fas fa-flask me-2 content-icon lab-icon"></i> Lab:
+                        {% elif item.content_type == 'session' %}
+                            <i class="fas fa-code me-2 content-icon session-icon"></i> Session:
+                        {% endif %}
+                        {{ item.content_object.title }}
+                    </span>
+                    <div class="d-flex align-items-center">
+                        {% if item.is_published %}
+                        <span class="badge bg-success me-2">Published</span>
+                        {% else %}
+                        <span class="badge bg-secondary me-2">Draft</span>
+                        {% endif %}
+                        <button class="btn btn-sm btn-outline-secondary btn-toggle-publish me-2" data-entity-type="module_item" data-entity-id="{{ item.id }}" data-is-published="{{ item.is_published }}" onclick="event.stopPropagation(); togglePublish(this);">
+                            {{ 'Unpublish' if item.is_published else 'Publish' }}
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger btn-delete-content" onclick="event.stopPropagation(); deleteContentItem({{ item.id }});">Delete</button>
+                    </div>
+                </div>
+                {% endfor %}
+                {# Recursively render children submodules #}
+                <div class="submodules-list">
+                    {% for child in submodule.children %}
+                        {{ render_submodule_admin(child) }}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</a>
 {% endmacro %}

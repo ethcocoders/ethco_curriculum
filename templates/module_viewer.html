@@ -1,61 +1,102 @@
 {% extends "base.html" %}
 
-{% block title %}Module: {{ module.title }}{% endblock %}
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/course_cards.css') }}">
+{% endblock %}
+
+{% block title %}Curriculum: {{ parent_entity.title if parent_entity else "Home" }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <a href="{{ url_for('course_dashboard') }}" class="btn btn-sm btn-outline-secondary mb-3">&larr; Back to My Course</a>
-    
-    <h1 class="mb-4">Module: {{ module.title }}</h1>
-
-    {% for submodule in module.submodules %}
-    <div class="card mb-3">
-        <div class="card-header">
-            <h5>{{ submodule.order }}. {{ submodule.title }}</h5>
-        </div>
-        <div class="card-body">
-            <div class="list-group">
-                {% for item in submodule.items %}
-                    <a href="{% if item.content_type == 'quiz' %}{{ url_for('quiz_viewer', quiz_id=item.content_id) }}{% elif item.content_type == 'lab' %}{{ url_for('start_lab', lab_id=item.content_id) }}{% elif item.content_type == 'session' %}{{ url_for('session_viewer', session_id=item.content_id) }}{% else %}#{% endif %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="mb-1">
-                                {% if item.content_object %}
-                                    {{ item.content_object.title }}
-                                {% else %}
-                                    [Content Not Found]
-                                {% endif %}
-                            </h6>
-                            <small class="text-muted">{{ item.content_type | capitalize }}</small>
-                        </div>
-                        {% if user_progress_map and user_progress_map.get(item.id) == 'completed' %}
-                            <span class="badge bg-success rounded-pill">Completed</span>
-                        {% endif %}
-                    </a>
-                {% else %}
-                    <p class="text-muted">No learning items in this submodule yet.</p>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
+    {# Back button logic #}
+    {% if current_path_segments %}
+        {% set parent_path = "" %}
+        {% if current_path_segments|length > 1 %}
+            {% set parent_path = current_path_segments[:-1]|join('/') %}
+        {% endif %}
+        <a href="{{ url_for('curriculum_viewer', path_segments=parent_path) }}" class="btn btn-sm btn-outline-secondary mb-3">&larr; Back</a>
     {% else %}
-        <div class="card">
+        <a href="{{ url_for('course_dashboard') }}" class="btn btn-sm btn-outline-secondary mb-3">&larr; Back to My Course</a>
+    {% endif %}
+    
+    <h1 class="mb-4 course-page-title">
+        {% if parent_entity %}
+            {{ parent_entity.title }}
+        {% else %}
+            Curriculum
+        {% endif %}
+    </h1>
+
+    <div class="curriculum-entities-grid"> {# Using a new grid container #}
+        {% for entity in entities %}
+            {% if entity.__tablename__ == 'module' or entity.__tablename__ == 'submodule' %}
+                {# It's a directory (Module or Submodule) - render as a course-submodule-card #}
+                {% set new_path_segments = current_path_segments + [entity.slug] %}
+                <div class="course-submodule-card">
+                    <a class="submodule-title-link d-flex justify-content-between align-items-center" href="{{ url_for('curriculum_viewer', path_segments=new_path_segments|join('/')) }}">
+                        <h6 class="mb-0">
+                            <span class="submodule-order">{{ entity.order }}.</span> {{ entity.title }}
+                        </h6>
+                        <i class="fas fa-chevron-right"></i> {# Indicate it's a clickable folder #}
+                    </a>
+                </div>
+            {% elif entity.__tablename__ == 'module_item' %}
+                {# It's a file (ModuleItem) - render as a course-content-item #}
+                {% set item_url = "#" %}
+                {% set item_icon_class = "fas fa-file-alt" %}
+                {% set item_badge_class = "bg-secondary" %}
+
+                {% if entity.content_type == 'quiz' %}
+                    {% set item_url = url_for('quiz_viewer', quiz_id=entity.content_id) %}
+                    {% set item_icon_class = "fas fa-question-circle" %}
+                    {% set item_badge_class = "bg-info" %}
+                {% elif entity.content_type == 'lab' %}
+                    {% set item_url = url_for('start_lab', lab_id=entity.content_id) %}
+                    {% set item_icon_class = "fas fa-flask" %}
+                    {% set item_badge_class = "bg-warning text-dark" %}
+                {% elif entity.content_type == 'session' %}
+                    {% set item_url = url_for('session_viewer', session_id=entity.content_id) %}
+                    {% set item_icon_class = "fas fa-code" %}
+                    {% set item_badge_class = "bg-success" %}
+                {% elif entity.content_type == 'note' %}
+                    {% set item_url = url_for('note_viewer', module_item_id=entity.id) %}
+                    {% set item_icon_class = "fas fa-book" %}
+                    {% set item_badge_class = "bg-light text-dark" %}
+                {% endif %}
+                <div class="course-content-item">
+                    <span class="content-item-details">
+                        <i class="{{ item_icon_class }} me-2 content-icon"></i> 
+                        <a href="{{ item_url }}">
+                            {% if entity.content_object %}
+                                {{ entity.content_object.title }}
+                            {% else %}
+                                <small class="text-danger">[Content Not Found - Type: {{ entity.content_type | capitalize }}]</small>
+                            {% endif %}
+                        </a>
+                    </span>
+                    <span class="badge {{ item_badge_class }} content-status-badge">{{ entity.content_type | capitalize }}</span>
+                </div>
+            {% endif %}
+        {% else %}
+            <p class="text-muted">No content found in this directory.</p>
+        {% endfor %}
+    </div>
+
+    {# The "Finished the Module?" section is now context-dependent.
+       It should only appear if the current view is a Module (not a Submodule or a content list).
+       And it should use the parent_entity for module.id. #}
+    {% if parent_entity and parent_entity.__tablename__ == 'module' %}
+        <hr class="my-4">
+        <div class="card text-center">
             <div class="card-body">
-                <p class="text-muted">No submodules in this module yet. Content items are organized within submodules.</p>
+                <h5 class="card-title">Finished the Module?</h5>
+                <p class="card-text">If you have completed all the items in this module, you can check your work to claim your certificate.</p>
+                <form action="{{ url_for('check_module_completion', module_id=parent_entity.id) }}" method="POST">
+                    <button type="submit" class="btn btn-primary btn-lg">I'm Finished, Check for Completion</button>
+                </form>
             </div>
         </div>
-    {% endfor %}
-
-    <hr class="my-4">
-
-    <div class="card text-center">
-        <div class="card-body">
-            <h5 class="card-title">Finished the Module?</h5>
-            <p class="card-text">If you have completed all the items in this module, you can check your work to claim your certificate.</p>
-            <form action="{{ url_for('check_module_completion', module_id=module.id) }}" method="POST">
-                <button type="submit" class="btn btn-primary btn-lg">I'm Finished, Check for Completion</button>
-            </form>
-        </div>
-    </div>
+    {% endif %}
 
 </div>
 {% endblock %}

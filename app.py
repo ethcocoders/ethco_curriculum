@@ -1,3 +1,4 @@
+import re
 import click
 import os
 import datetime
@@ -509,31 +510,168 @@ def session_complete(session_id):
     session = PracticalSession.query.get_or_404(session_id)
     return render_template('session_complete.html', session=session)
 
-@app.route("/notes")
-@login_required
-def note_list():
-    notes = Note.query.order_by(Note.id.asc()).all()
-    return render_template('note_list.html', notes=notes)
 
-@app.route("/note/<int:note_id>")
+
+@app.route("/note/<int:module_item_id>")
 @login_required
-def note_viewer(note_id):
-    note = Note.query.get_or_404(note_id)
-    return render_template('note_viewer.html', note=note)
+def note_viewer(module_item_id):
+    module_item = ModuleItem.query.get_or_404(module_item_id)
+    if module_item.content_type != 'note' or not module_item.content_path:
+        flash('Invalid request for note viewer.', 'danger')
+        return redirect(url_for('course_dashboard')) # Or an appropriate error page
+
+    full_path = os.path.join(app.root_path, module_item.content_path)
+    try:
+        with open(full_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Create a dummy note object for the template
+        note = {
+            'title': module_item.content_object['title'], # Use the title from content_object
+            'content': content
+        }
+        return render_template('note_viewer.html', note=note)
+    except FileNotFoundError:
+        flash('Note file not found.', 'danger')
+        return redirect(url_for('course_dashboard'))
+    except Exception as e:
+        flash(f'Error reading note: {e}', 'danger')
+        return redirect(url_for('course_dashboard'))
 
 @app.route("/module/<int:module_id>")
 @login_required
-def module_viewer(module_id):
+def old_module_viewer(module_id):
+    # This route is deprecated in favor of the new /curriculum/ route
+    # For now, it redirects to the new route if possible
     module = Module.query.get_or_404(module_id)
+    return redirect(url_for('curriculum_viewer', path_segments=module.slug))
+
+@app.route("/curriculum/")
+@app.route("/curriculum/<path:path_segments>")
+@login_required
+def curriculum_viewer(path_segments=""):
     user_progress_map = get_user_progress_map(current_user.id)
-    return render_template('module_viewer.html', module=module, user_progress_map=user_progress_map)
+    
+    # Split the path into individual slugs
+    slugs = [s for s in path_segments.split('/') if s]
+    
+    current_entity = None # Can be a Module, Submodule, or ModuleItem
+    current_parent_type = None # 'module' or 'submodule'
+    current_parent_id = None
+    
+    # If no path segments, show top-level modules
+    if not slugs:
+        entities_to_display = Module.query.filter_by(is_published=True).order_by(Module.order.asc()).all()
+        return render_template('module_viewer.html', 
+                               current_path_segments=[], 
+                               entities=entities_to_display, 
+                               user_progress_map=user_progress_map,
+                               parent_entity=None)
+
+    # Traverse the path segments
+    for i, slug in enumerate(slugs):
+        if i == 0: # First segment must be a Module
+            entity = Module.query.filter_by(slug=slug, is_published=True).first()
+            if not entity:
+                flash(f"Module '{slug}' not found.", 'danger')
+                return redirect(url_for('course_dashboard'))
+            current_entity = entity
+            current_parent_type = 'module'
+            current_parent_id = entity.id
+        else: # Subsequent segments can be Submodules or the final ModuleItem
+            if current_parent_type == 'module':
+                # Look for a top-level submodule of the current module
+                entity = Submodule.query.filter_by(
+                    module_id=current_entity.id, 
+                    parent_id=None, 
+                    slug=slug
+                ).first()
+            elif current_parent_type == 'submodule':
+                # Look for a nested submodule of the current submodule
+                entity = Submodule.query.filter_by(
+                    parent_id=current_entity.id, 
+                    slug=slug
+                ).first()
+            else:
+                # This case should ideally not be reached if logic is sound
+                flash("Invalid path segment encountered.", 'danger')
+                return redirect(url_for('course_dashboard'))
+
+            if not entity:
+                # If not a submodule, it might be a ModuleItem (file)
+                # This assumes ModuleItems are always the last segment in a path
+                if i == len(slugs) - 1: # It's the last segment
+                    module_item = ModuleItem.query.filter(
+                        ModuleItem.submodule_id == current_entity.id,
+                        ModuleItem.content_path.like(f'%/{slug}') # Match by filename
+                    ).first()
+                    
+                    if module_item:
+                        # Redirect to the specific viewer for the content type
+                        if module_item.content_type == 'quiz':
+                            return redirect(url_for('quiz_viewer', quiz_id=module_item.content_id))
+                        elif module_item.content_type == 'lab':
+                            return redirect(url_for('start_lab', lab_id=module_item.content_id))
+                        elif module_item.content_type == 'session':
+                            return redirect(url_for('session_viewer', session_id=module_item.content_id))
+                        elif module_item.content_type == 'note':
+                            # For notes, we need to pass the module_item_id to the note_viewer
+                            return redirect(url_for('note_viewer', module_item_id=module_item.id))
+                        else:
+                            flash("Unsupported content type.", 'danger')
+                            return redirect(url_for('course_dashboard'))
+                    else:
+                        flash(f"Content '{slug}' not found.", 'danger')
+                        return redirect(url_for('course_dashboard'))
+                else:
+                    flash(f"Path segment '{slug}' not found.", 'danger')
+                    return redirect(url_for('course_dashboard'))
+            
+            current_entity = entity
+            current_parent_type = 'submodule'
+            current_parent_id = entity.id
+
+    # If we reached here, current_entity is either a Module or a Submodule
+    # We need to display its children (submodules and module items)
+    entities_to_display = []
+
+    # Add child submodules
+    if current_parent_type == 'module':
+        submodules = Submodule.query.filter_by(module_id=current_entity.id, parent_id=None).order_by(Submodule.order.asc()).all()
+        entities_to_display.extend(submodules)
+    elif current_parent_type == 'submodule':
+        submodules = Submodule.query.filter_by(parent_id=current_entity.id).order_by(Submodule.order.asc()).all()
+        entities_to_display.extend(submodules)
+
+    # Add module items (files)
+    module_items = ModuleItem.query.filter_by(submodule_id=current_entity.id).order_by(ModuleItem.order.asc()).all()
+    entities_to_display.extend(module_items)
+
+    # Sort all entities by their 'order' attribute if they have one
+    # This assumes both Submodule and ModuleItem have an 'order' attribute
+    entities_to_display.sort(key=lambda x: x.order if hasattr(x, 'order') else float('inf'))
+
+    return render_template('module_viewer.html', 
+                           current_path_segments=slugs, 
+                           entities=entities_to_display, 
+                           user_progress_map=user_progress_map,
+                           parent_entity=current_entity)
 
 @app.route("/submodule/<int:submodule_id>")
 @login_required
-def submodule_viewer(submodule_id):
+def old_submodule_viewer(submodule_id):
+    # This route is deprecated in favor of the new /curriculum/ route
     submodule = Submodule.query.get_or_404(submodule_id)
-    user_progress_map = get_user_progress_map(current_user.id)
-    return render_template('submodule_viewer.html', submodule=submodule, user_progress_map=user_progress_map)
+    # Construct the path for the submodule
+    path_segments = [submodule.slug]
+    current = submodule
+    while current.parent:
+        current = current.parent
+        path_segments.insert(0, current.slug)
+    if submodule.module:
+        path_segments.insert(0, submodule.module.slug)
+    
+    return redirect(url_for('curriculum_viewer', path_segments='/'.join(path_segments)))
 
 @app.route('/certificate/<int:certificate_id>')
 @login_required
@@ -650,10 +788,28 @@ def change_password():
 
 # ... (rest of your routes)
 
-# ===================================
-# 4.5 API ROUTES
-# ===================================
+@app.route("/admin/api/get_content_by_type/<string:content_type>", methods=['GET'])
+@login_required
+def get_content_by_type(content_type):
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
 
+    content_list = []
+    if content_type == 'quiz':
+        items = Quiz.query.all()
+    elif content_type == 'lab':
+        items = Lab.query.all()
+    elif content_type == 'session':
+        items = PracticalSession.query.all()
+    else:
+        return jsonify({'status': 'error', 'message': 'Invalid content type'}), 400
+
+    for item in items:
+        content_list.append({'id': item.id, 'title': item.title})
+
+    return jsonify({'status': 'success', 'content': content_list})
+
+# app.py -> API ROUTES section
 @app.route("/api/quiz/check_answer", methods=['POST'])
 @login_required
 def check_answer():
@@ -711,6 +867,37 @@ def submit_result():
     
     return jsonify({'status': 'success', 'passed': passed})
 
+@app.route("/api/toggle_publish/<string:entity_type>/<int:entity_id>", methods=['POST'])
+@login_required
+def toggle_publish(entity_type, entity_id):
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
+
+    entity = None
+    if entity_type == 'module':
+        entity = Module.query.get(entity_id)
+    elif entity_type == 'submodule':
+        entity = Submodule.query.get(entity_id)
+    elif entity_type == 'module_item':
+        entity = ModuleItem.query.get(entity_id)
+    else:
+        return jsonify({'status': 'error', 'message': 'Invalid entity type'}), 400
+
+    if not entity:
+        return jsonify({'status': 'error', 'message': f'{entity_type.capitalize()} not found'}), 404
+
+    try:
+        entity.is_published = not entity.is_published
+        db.session.commit()
+        return jsonify({
+            'status': 'success',
+            'new_status': entity.is_published,
+            'message': f'{entity_type.capitalize()} visibility toggled successfully.'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 # ===================================
 # 6. CUSTOM CLI COMMANDS
 # ===================================
@@ -743,6 +930,112 @@ def process_quiz(filepath):
         return
     
     # ... (rest of the database logic) ...
+
+@app.cli.command("automate-curriculum")
+@click.argument("path", default="static/uploads/curriculum")
+def automate_curriculum(path):
+    """
+    Automates the creation of modules, submodules, and content notes
+    from a directory structure, clearing existing data first.
+    """
+    click.echo("--- Automating Curriculum from File System ---")
+    root_curriculum_path = os.path.join(app.root_path, path)
+
+    if not os.path.isdir(root_curriculum_path):
+        click.echo(f"Error: Curriculum root directory not found at '{root_curriculum_path}'")
+        return
+
+    # --- Confirmation to clear existing data ---
+    if not click.confirm("This will DELETE all existing Modules, Submodules, and ModuleItems. Continue?"):
+        click.echo("Operation cancelled by user.")
+        return
+
+    try:
+        # Clear existing data
+        click.echo("Clearing existing curriculum data...")
+        db.session.query(ModuleItem).delete()
+        db.session.query(Submodule).delete()
+        db.session.query(Module).delete()
+        db.session.commit()
+        click.echo("Existing curriculum data cleared.")
+    except Exception as e:
+        db.session.rollback()
+        click.echo(f"Error clearing existing data: {e}")
+        return
+
+    def _clean_name(name):
+        # Remove leading numbers and underscores, replace underscores with spaces, title case
+        name = re.sub(r'^\d+_', '', name)
+        return name.replace('_', ' ').replace('-', ' ').title()
+
+    def _process_directory_recursive(current_dir_path, parent_module=None, parent_submodule=None):
+        current_level_items = sorted(os.listdir(current_dir_path))
+        
+        module_order_counter = 1
+        submodule_order_counter = 1
+        module_item_order_counter = 1
+
+        for item_name in current_level_items:
+            item_path = os.path.join(current_dir_path, item_name)
+            relative_item_path = os.path.relpath(item_path, app.root_path)
+
+            if os.path.isdir(item_path):
+                # Check if it's a module or submodule
+                if parent_module is None and parent_submodule is None: # Top-level directory -> Module
+                    module_title = _clean_name(item_name)
+                    click.echo(f"+ Creating Module: '{module_title}' from '{item_name}'")
+                    new_module = Module(title=module_title, slug=item_name, order=module_order_counter)
+                    db.session.add(new_module)
+                    db.session.flush() # Flush to get ID for recursion
+                    _process_directory_recursive(item_path, parent_module=new_module)
+                    module_order_counter += 1
+                else: # Subdirectory -> Submodule
+                    submodule_title = _clean_name(item_name)
+                    click.echo(f"  + Creating Submodule: '{submodule_title}' from '{item_name}'")
+                    new_submodule = Submodule(
+                        title=submodule_title,
+                        slug=item_name, # Add slug here
+                        order=submodule_order_counter,
+                        module_id=parent_module.id,
+                        parent_id=parent_submodule.id if parent_submodule else None
+                    )
+                    db.session.add(new_submodule)
+                    db.session.flush() # Flush to get ID for recursion
+                    _process_directory_recursive(item_path, parent_module=parent_module, parent_submodule=new_submodule)
+                    submodule_order_counter += 1
+            elif item_name.endswith('.md'):
+                # Only process markdown files as notes
+                if parent_submodule: # Notes must belong to a submodule
+                    note_title = _clean_name(os.path.splitext(item_name)[0])
+                    click.echo(f"    + Creating Note ModuleItem: '{note_title}' from '{item_name}'")
+                    new_module_item = ModuleItem(
+                        order=module_item_order_counter,
+                        submodule_id=parent_submodule.id,
+                        content_type='note',
+                        content_id=None, # No longer using Note model ID
+                        content_path=relative_item_path
+                    )
+                    db.session.add(new_module_item)
+                    module_item_order_counter += 1
+                else:
+                    click.echo(f"    ! Skipping markdown file '{item_name}' in module root (must be in a submodule).")
+            else:
+                click.echo(f"    - Skipping unknown file type: '{item_name}'")
+        
+        db.session.commit() # Commit changes for this level after processing all items
+
+    try:
+        # Start recursive processing from the root curriculum path
+        _process_directory_recursive(root_curriculum_path)
+        db.session.commit() # Final commit for any remaining changes
+        click.echo("--- Curriculum automation complete! ---")
+    except Exception as e:
+        db.session.rollback()
+        click.echo(f"An unexpected error occurred during curriculum automation: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 
 
 # ===================================
@@ -810,6 +1103,7 @@ class Course(db.Model):
 class Module(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)
+    slug = db.Column(db.String(150), unique=True, nullable=False) # New slug column
     order = db.Column(db.Integer, nullable=False, unique=True)
     is_published = db.Column(db.Boolean, nullable=False, default=False)
     
@@ -825,7 +1119,9 @@ class Module(db.Model):
 class Submodule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)
+    slug = db.Column(db.String(150), nullable=False) # New slug column, not unique globally
     order = db.Column(db.Integer, nullable=False)
+    is_published = db.Column(db.Boolean, nullable=False, default=False) # Added is_published field
     
     # Foreign Key to Module
     module_id = db.Column(db.Integer, db.ForeignKey('module.id'), nullable=True)
@@ -847,13 +1143,15 @@ class ModuleItem(db.Model):
     __tablename__ = 'module_item'
     id = db.Column(db.Integer, primary_key=True)
     order = db.Column(db.Integer, nullable=False)
+    is_published = db.Column(db.Boolean, nullable=False, default=False) # Added is_published field
     
     # Foreign Key to Submodule
     submodule_id = db.Column(db.Integer, db.ForeignKey('submodule.id'), nullable=False)
     
     # Polymorphic Content Fields
-    content_type = db.Column(db.String(50), nullable=False)  # 'quiz', 'lab', 'session'
-    content_id = db.Column(db.Integer, nullable=False)
+    content_type = db.Column(db.String(50), nullable=False)  # 'quiz', 'lab', 'session', 'note'
+    content_id = db.Column(db.Integer, nullable=True) # Now nullable
+    content_path = db.Column(db.String(255), nullable=True) # New column for file paths
     
     # Relationships
     submodule = db.relationship('Submodule', back_populates='items')
@@ -871,7 +1169,13 @@ class ModuleItem(db.Model):
         elif self.content_type == 'session':
             return PracticalSession.query.get(self.content_id)
         elif self.content_type == 'note':
-            return Note.query.get(self.content_id)
+            # For notes, we now store the path directly.
+            # We need to return an object that has a 'title' attribute for display.
+            if self.content_path:
+                # Extract title from filename
+                title = os.path.splitext(os.path.basename(self.content_path))[0].replace('_', ' ').title()
+                return {'title': title, 'path': self.content_path}
+            return None
         return None
 
 class UserProgress(db.Model):
@@ -1017,16 +1321,7 @@ class Requirement(db.Model):
     def __repr__(self):
         return f"Requirement('{self.check_type}' for Session ID: {self.session_id})"
 
-class Note(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(100), nullable=False)
-    filename = db.Column(db.String(100), unique=True, nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False, unique=True)
-    quiz = db.relationship('Quiz', backref=db.backref('note_assoc', uselist=False))
 
-    def __repr__(self):
-        return f"Note('{self.title}')"
 
 # ===================================
 # 3. FORMS
@@ -1365,6 +1660,36 @@ def admin_manage_module_content(module_id):
         item=module
     )
 
+@app.route("/admin/module/<int:module_id>/content_management")
+@login_required
+def admin_module_content_management(module_id):
+    if current_user.role != 'admin':
+        flash('Permission denied.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    module = Module.query.get_or_404(module_id)
+    
+    return render_template(
+        'admin_manage_content.html', 
+        entity=module,
+        entity_type='module'
+    )
+
+@app.route("/admin/submodule/<int:submodule_id>/content_management")
+@login_required
+def admin_submodule_content_management(submodule_id):
+    if current_user.role != 'admin':
+        flash('Permission denied.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    submodule = Submodule.query.get_or_404(submodule_id)
+    
+    return render_template(
+        'admin_manage_content.html', 
+        entity=submodule,
+        entity_type='submodule'
+    )
+
 @app.route("/admin/submodule/<int:submodule_id>/manage")
 @login_required
 def admin_manage_submodule_content(submodule_id):
@@ -1540,74 +1865,63 @@ def admin_sessions():
     sessions = PracticalSession.query.all()
     return render_template('admin_session_management.html', sessions=sessions)
 
-@app.route("/admin/notes", methods=['GET', 'POST'])
+
+
+@app.route("/admin/browse/", defaults={'path_segments': ''})
+@app.route("/admin/browse/<path:path_segments>")
 @login_required
-def admin_notes():
+def admin_browse(path_segments):
     if current_user.role != 'admin':
-        flash('You do not have permission to access this page.', 'danger')
+        flash('Permission denied.', 'danger')
         return redirect(url_for('dashboard'))
 
-    if request.method == 'POST':
-        if 'note_file' not in request.files:
-            flash('No file part in the request.', 'danger')
-            return redirect(request.url)
-        
-        file = request.files['note_file']
-        quiz_id = request.form.get('quiz_id')
-        
-        if file.filename == '':
-            flash('No file selected.', 'danger')
-            return redirect(request.url)
+    embedded = request.args.get('embedded', 'false').lower() == 'true'
 
-        if not quiz_id:
-            flash('Please select a quiz to associate with the note.', 'danger')
-            return redirect(request.url)
+    slugs = [s for s in path_segments.split('/') if s]
+    breadcrumbs = []
+    current_entity = None
+    parent_entity = None
+    
+    if not slugs:
+        # Top-level: display all modules
+        items = Module.query.order_by(Module.order.asc()).all()
+        breadcrumbs.append({'title': 'Course', 'url': url_for('admin_browse')})
+    else:
+        # Traverse the path to find the current entity
+        current_url_path = []
+        for i, slug in enumerate(slugs):
+            current_url_path.append(slug)
+            if i == 0:
+                entity = Module.query.filter_by(slug=slug).first_or_404()
+                breadcrumbs.append({'title': 'Course', 'url': url_for('admin_browse')})
+                breadcrumbs.append({'title': entity.title, 'url': url_for('admin_browse', path_segments='/'.join(current_url_path))})
+                current_entity = entity
+            else:
+                parent_entity = current_entity
+                entity = Submodule.query.filter(
+                    (Submodule.module_id == parent_entity.id if isinstance(parent_entity, Module) else Submodule.parent_id == parent_entity.id),
+                    Submodule.slug == slug
+                ).first_or_404()
+                breadcrumbs.append({'title': entity.title, 'url': url_for('admin_browse', path_segments='/'.join(current_url_path))})
+                current_entity = entity
 
-        selected_quiz = Quiz.query.get(quiz_id)
-        if not selected_quiz:
-            flash('Selected quiz not found.', 'danger')
-            return redirect(request.url)
-
-        # Check if the selected quiz is already associated with another note
-        if Note.query.filter_by(quiz_id=quiz_id).first():
-            flash('This quiz is already associated with another note. Please choose a different one.', 'danger')
-            return redirect(request.url)
-
-        if file and file.filename.endswith('.md'):
-            filename = file.filename
-            
-            if Note.query.filter_by(filename=filename).first():
-                flash(f"A note with the filename '{filename}' already exists.", 'danger')
-                return redirect(request.url)
-
-            markdown_text = file.stream.read().decode("utf-8")
-            
-            try:
-                note_title = os.path.splitext(filename)[0].replace('_', ' ').title()
-                new_note = Note(title=note_title, filename=filename, content=markdown_text, quiz_id=selected_quiz.id)
-                
-                db.session.add(new_note)
-                db.session.commit()
-                flash(f"Successfully uploaded and created Note: '{note_title}'.", 'success')
-            except Exception as e:
-                db.session.rollback()
-                flash(f"A database error occurred: {e}", "danger")
-
-            return redirect(url_for('admin_notes'))
+        # Get children of the current entity
+        if isinstance(current_entity, Module):
+            items = list(current_entity.submodules.order_by(Submodule.order.asc()).all())
+        elif isinstance(current_entity, Submodule):
+            items = list(current_entity.children.order_by(Submodule.order.asc()).all())
+            # Also add module items (content) for the current submodule
+            items.extend(list(current_entity.items.order_by(ModuleItem.order.asc()).all()))
         else:
-            flash('Invalid file type. Please upload a .md file.', 'danger')
-            return redirect(request.url)
+            items = []
 
-    # For GET request: Fetch available quizzes
-    # A quiz is available if it's a 'Quiz' category, has 3 questions, and is not already associated with a note.
-    available_quizzes = Quiz.query.filter(
-        Quiz.category == 'Quiz',
-        ~Quiz.id.in_(db.session.query(Note.quiz_id))
-    ).all()
-    print(f"DEBUG: Available quizzes for notes: {available_quizzes}")
-
-    notes = Note.query.order_by(Note.id.desc()).all()
-    return render_template('admin_note_management.html', notes=notes, available_quizzes=available_quizzes)
+    template_name = 'admin_browse_modal.html' if embedded else 'admin_browse.html'
+    return render_template(template_name, 
+                           items=items, 
+                           breadcrumbs=breadcrumbs,
+                           current_entity=current_entity,
+                           slugs=slugs,
+                           embedded=embedded)
 
 # ===================================
 # COURSE BUILDER ROUTES (ADMIN)
@@ -1765,6 +2079,75 @@ def edit_submodule(submodule_id):
         return redirect(url_for('admin_manage_submodules', module_id=submodule.module_id))
 
     return render_template('admin_edit_submodule.html', submodule=submodule)
+
+@app.route("/admin/submodule/<int:submodule_id>/add_item", methods=['POST'])
+@login_required
+def add_module_item(submodule_id):
+    if current_user.role != 'admin':
+        flash('Permission denied.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    submodule = Submodule.query.get_or_404(submodule_id)
+    
+    content_type = request.form.get('content_type')
+    content_id = request.form.get('content_id')
+    content_path = request.form.get('content_path')
+
+    if not content_type:
+        flash('Content type is required.', 'danger')
+        return redirect(url_for('admin_submodule_content_management', submodule_id=submodule.id))
+
+    # Determine the order for the new module item
+    last_item = ModuleItem.query.filter_by(submodule_id=submodule.id).order_by(ModuleItem.order.desc()).first()
+    new_order = last_item.order + 1 if last_item else 1
+
+    try:
+        if content_type == 'note':
+            if not content_path:
+                flash('Content path is required for notes.', 'danger')
+                return redirect(url_for('admin_submodule_content_management', submodule_id=submodule.id))
+            new_module_item = ModuleItem(
+                order=new_order,
+                submodule_id=submodule.id,
+                content_type=content_type,
+                content_path=content_path
+            )
+        else:
+            if not content_id:
+                flash(f'Content ID is required for {content_type}.', 'danger')
+                return redirect(url_for('admin_submodule_content_management', submodule_id=submodule.id))
+            new_module_item = ModuleItem(
+                order=new_order,
+                submodule_id=submodule.id,
+                content_type=content_type,
+                content_id=content_id
+            )
+        
+        db.session.add(new_module_item)
+        db.session.commit()
+        flash(f"Module item '{content_type}' added successfully.", 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error adding module item: {e}", 'danger')
+
+    return redirect(url_for('admin_submodule_content_management', submodule_id=submodule.id))
+
+@app.route("/admin/module_item/<int:module_item_id>/delete", methods=['POST'])
+@login_required
+def delete_module_item(module_item_id):
+    if current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Permission denied'}), 403
+    
+    module_item_to_delete = ModuleItem.query.get_or_404(module_item_id)
+    submodule_id = module_item_to_delete.submodule_id
+
+    try:
+        db.session.delete(module_item_to_delete)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Module item deleted successfully.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route("/admin/submodule/<int:submodule_id>/delete", methods=['POST'])
 @login_required
@@ -2463,7 +2846,5 @@ def promote(username):
 # 6. APP EXECUTION
 # ===================================
 
-if __name__ == '__main__':
-    with app.app_context():
-        create_admin()
-    app.run(debug=True)
+if __name__ == "__main__":
+    app.run(debug=True, use_reloader=True)

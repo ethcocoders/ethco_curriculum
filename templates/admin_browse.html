@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block head %}
+    {{ super() }}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/course_cards.css') }}">
+    <style>
+        .breadcrumb-item a {
+            text-decoration: none;
+        }
+        .card-title a {
+            text-decoration: none;
+            color: inherit;
+        }
+        .card-title a:hover {
+            text-decoration: underline;
+        }
+    </style>
+{% endblock %}
+
+{% block title %}
+    Browse Course - 
+    {% if current_entity %}
+        {{ current_entity.title }}
+    {% else %}
+        Top Level
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            {% for crumb in breadcrumbs %}
+                {% if not loop.last %}
+                    <li class="breadcrumb-item"><a href="{{ crumb.url }}">{{ crumb.title }}</a></li>
+                {% else %}
+                    <li class="breadcrumb-item active" aria-current="page">{{ crumb.title }}</li>
+                {% endif %}
+            {% endfor %}
+        </ol>
+    </nav>
+
+    <h1 class="course-page-title mb-4">
+        {% if current_entity %}
+            {{ current_entity.title }}
+        {% else %}
+            Course Overview
+        {% endif %}
+    </h1>
+
+    <div class="row">
+        {% for item in items %}
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        {% if item.__class__.__name__ == 'Module' %}
+                            <h5 class="card-title">
+                                <i class="fas fa-archive me-2"></i>
+                                <a href="{{ url_for('admin_browse', path_segments=item.slug) }}">{{ item.title }}</a>
+                            </h5>
+                            <p class="card-text">Module</p>
+                        {% elif item.__class__.__name__ == 'Submodule' %}
+                            <h5 class="card-title">
+                                <i class="fas fa-folder me-2"></i>
+                                <a href="{{ url_for('admin_browse', path_segments='/'.join(slugs) + '/' + item.slug) }}">{{ item.title }}</a>
+                            </h5>
+                            <p class="card-text">Submodule</p>
+                        {% elif item.__class__.__name__ == 'ModuleItem' %}
+                            <h5 class="card-title">
+                                {% if item.content_type == 'quiz' %}
+                                    <i class="fas fa-question-circle me-2"></i>
+                                {% elif item.content_type == 'lab' %}
+                                    <i class="fas fa-flask me-2"></i>
+                                {% elif item.content_type == 'session' %}
+                                    <i class="fas fa-code me-2"></i>
+                                {% elif item.content_type == 'note' %}
+                                    <i class="fas fa-sticky-note me-2"></i>
+                                {% endif %}
+                                {{ item.content_object.title if item.content_object else 'Note' }}
+                            </h5>
+                            <p class="card-text">{{ item.content_type.capitalize() }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="col">
+                <p>No items to display.</p>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -5,6 +5,8 @@
     --bg-dark: #0f0c29;
     --bg-light: #24243e;
     --text-light: #ffffff;
+    --text-color: var(--text-light); /* Ensure text color is defined */
+    --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Define a default font family */
 }
 
 body {
@@ -85,6 +87,7 @@ body {
 
 .btn-primary:hover {
     transform: translateY(-3px);
+    background: linear-gradient(45deg, #7928ca, var(--secondary-color)); /* Invert gradient direction or change colors slightly */
     box-shadow: 0 15px 30px -10px rgba(253, 0, 128, 0.7);
 }
 
@@ -95,7 +98,9 @@ body {
 }
 
 .btn-secondary:hover {
-    background: rgba(0, 242, 195, 0.1);
+    background: var(--primary-color); /* Fill with primary color on hover */
+    color: var(--bg-dark); /* Change text to dark on hover */
+    border-color: var(--primary-color);
     transform: translateY(-3px);
     box-shadow: 0 10px 20px -10px rgba(0, 242, 195, 0.3);
 }
@@ -509,161 +514,309 @@ body {
 }
 
 /* Card-based List Items (Modules, Submodules, Content Items) */
-.module-card, .submodule-card, .content-item-card {
-    background: var(--bg-light); /* Use a lighter background from the palette */
+.module-card, .submodule-card, .content-item-card, .admin-feature-card, .card {
+    background: var(--bg-light) !important; /* Use a lighter background from the palette */
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 10px;
     overflow: hidden;
     transition: all 0.2s ease-in-out;
     position: relative; /* Needed for absolute positioning of drag handle/dropdown */
+    color: var(--text-light) !important; /* Ensure text color is light for all cards */
 }
 
-.module-card:hover, .submodule-card:hover, .content-item-card:hover {
+.module-card:hover, .submodule-card:hover, .content-item-card:hover, .admin-feature-card:hover {
     transform: translateY(-5px);
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
     border-color: var(--primary-color);
 }
 
-.module-card .card-body-link, .submodule-card .card-body-link, .content-item-card .card-body-link {
+.module-card .card-body-link, .submodule-card .card-body-link, .content-item-card .card-body-link, .admin-feature-card-link {
     text-decoration: none;
     color: inherit; /* Inherit text color from parent */
     display: block; /* Make the whole body clickable */
 }
 
-.module-card .card-body-link:hover, .submodule-card .card-body-link:hover, .content-item-card .card-body-link:hover {
+.module-card .card-body-link:hover, .submodule-card .card-body-link:hover, .content-item-card .card-body-link:hover, .admin-feature-card-link:hover {
     color: inherit; /* Prevent text color change on hover */
 }
 
-.module-card .card-body, .submodule-card .card-body, .content-item-card .card-body {
+.module-card .card-body, .submodule-card .card-body, .content-item-card .card-body, .admin-feature-card {
     padding: 1.5rem;
 }
 
+.admin-feature-card {
+    text-align: center;
+    height: 100%; /* Ensure cards in a row have equal height */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.admin-feature-card i {
+    font-size: 3.5rem; /* Slightly larger icons */
+    color: var(--primary-color); /* Use primary color for icons */
+    margin-bottom: 1rem;
+    transition: color 0.3s ease;
+}
+
+.admin-feature-card:hover i {
+    color: var(--secondary-color); /* Change icon color on hover */
+}
+
+.admin-feature-card .card-title {
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-light) !important;
+}
+
+.admin-feature-card .card-text {
+    color: #bbb !important;
+    font-size: 0.95rem;
+}
+
+/* Explicit text color for card content */
+.admin-feature-card h5,
+.admin-feature-card p,
+.card-body h5,
+.card-body p {
+    color: var(--text-light) !important;
+}
+
 .module-card .card-title, .submodule-card .card-title, .content-item-card .card-title {
-    color: var(--text-light);
+    color: var(--text-light) !important;
     font-size: 1.25rem;
     margin-bottom: 0.5rem;
 }
 
 .module-card .card-text, .submodule-card .card-text, .content-item-card .card-text {
-    color: #bbb;
+    color: #bbb !important;
     font-size: 0.9rem;
 }
 
-.module-card .card-footer, .submodule-card .card-footer, .content-item-card .card-footer {
+.module-card .card-footer, .submodule-card .card-footer, .content-item-card .card-footer, .card-footer {
     background-color: rgba(0, 0, 0, 0.2); /* Slightly darker footer */
     border-top: 1px solid rgba(255, 255, 255, 0.05);
     padding: 0.75rem 1.5rem;
 }
 
-/* Drag Handle */
-.handle {
-    color: #888;
-    cursor: grab;
-    transition: color 0.2s ease;
-}
-
-.handle:hover {
-    color: var(--primary-color);
-}
-
-/* 3-dot Dropdown Toggle */
-.dropdown-toggle-icon {
-    background: none;
-    border: none;
-    color: #888;
-    font-size: 1.2rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 5px;
-    transition: all 0.2s ease;
-}
-
-.dropdown-toggle-icon:hover {
-    color: var(--primary-color);
-    background-color: rgba(255, 255, 255, 0.05);
-}
-
-/* Dropdown Menu Styling */
-.dropdown-menu {
-    background-color: var(--bg-dark);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-}
-
-.dropdown-item {
-    color: var(--text-light);
-    transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-.dropdown-item:hover {
-    background-color: rgba(0, 0, 0, 0.3);
-    color: var(--primary-color);
-}
-
-.dropdown-item.text-danger:hover {
-    color: var(--secondary-color); /* Keep delete red/pink */
-}
-
-.dropdown-divider {
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Modal Styling */
-.modal-content {
-    background-color: var(--bg-dark);
-    color: var(--text-light);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.modal-header {
+/* Quick Stats and Recent Activity Card Specifics */
+.card-header {
+    background-color: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--primary-color) !important; /* Header text color */
+    font-weight: 600;
 }
 
-.modal-title {
-    color: var(--primary-color);
+.card-body {
+    padding: 1.5rem;
 }
 
-.modal-body .form-control {
-    background-color: var(--bg-light);
-    border-color: rgba(255, 255, 255, 0.1);
+.card-body .text-info {
+    color: var(--primary-color) !important; /* Ensure primary color for info text */
+}
+
+.card-body .text-success {
+    color: var(--secondary-color) !important; /* Ensure secondary color for success text */
+}
+
+.card-body .h5 {
     color: var(--text-light);
+    font-weight: 700;
 }
 
-.modal-body .form-control:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 0.25rem rgba(0, 242, 195, 0.25);
+.card-body .font-weight-bold {
+    font-weight: 700 !important;
 }
 
-.modal-footer {
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+.card-body .text-gray-800 {
+    color: var(--text-light) !important;
 }
 
-/* Adjustments for Sortable.js ghost element */
-.sortable-ghost {
-    opacity: 0.4;
-    background-color: rgba(var(--primary-color), 0.1);
-    border: 1px dashed var(--primary-color);
+.card-body .text-uppercase {
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    color: #aaa;
+}
+
+.card-body .border-end {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+#page-content-wrapper {
+    background-color: var(--bg-dark); /* Ensure the main content area has a dark background */
+    color: var(--text-light); /* Ensure text is light on dark background */
+    min-height: 100vh; /* Ensure it takes full height */
+}
+
+.border-bottom-dark {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
 /* Admin Sidebar Enhancements */
+#sidebar-wrapper {
+    background-color: var(--bg-dark) !important; /* Ensure dark background */
+    border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.sidebar-heading {
+    padding: 1.5rem;
+    font-size: 1.4rem;
+    color: var(--primary-color); /* Use primary color for heading */
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
 #sidebar-wrapper .list-group-item {
+    background-color: var(--bg-dark) !important; /* Ensure dark background for items */
+    color: var(--text-light); /* Light text color */
     padding: 1rem 1.5rem; /* Increase vertical and horizontal padding */
     font-size: 1.1rem;    /* Slightly larger font size */
     transition: all 0.3s ease; /* Smooth transition for hover effects */
+    border: none; /* Remove default border */
+    border-left: 4px solid transparent; /* For active indicator */
 }
 
 #sidebar-wrapper .list-group-item i {
     font-size: 1.2rem;    /* Slightly larger icon size */
     width: 1.5rem;        /* Ensure consistent icon spacing */
     text-align: center;
+    margin-right: 0.75rem;
+    color: #aaa; /* Subtle icon color */
+    transition: color 0.3s ease;
 }
 
 #sidebar-wrapper .list-group-item:hover {
-    background-color: rgba(0, 242, 195, 0.1); /* Subtle hover effect */
+    background-color: rgba(0, 242, 195, 0.1) !important; /* Subtle hover effect */
     color: var(--primary-color); /* Change text color on hover */
+    border-left-color: var(--primary-color); /* Highlight border on hover */
+}
+
+#sidebar-wrapper .list-group-item:hover i {
+    color: var(--primary-color); /* Change icon color on hover */
 }
 
 #sidebar-wrapper .list-group-item.active {
-    background-color: var(--primary-color); /* Highlight active item */
-    color: white;
-    border-color: var(--primary-color);
+    background-color: rgba(0, 242, 195, 0.2) !important; /* Highlight active item */
+    color: var(--primary-color);
+    border-left-color: var(--primary-color); /* Active indicator */
+    font-weight: 600;
+}
+
+#sidebar-wrapper .list-group-item.active i {
+    color: var(--primary-color);
+}
+
+/* --- Markdown Content Styling --- */
+.markdown-content {
+    color: #e0e0e0;
+    line-height: 1.7;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    color: var(--text-light);
+    font-weight: 600;
+    margin-top: 1.5em;
+    margin-bottom: 0.8em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 0.3em;
+}
+
+.markdown-content h1 { font-size: 2.2rem; }
+.markdown-content h2 { font-size: 1.8rem; }
+.markdown-content h3 { font-size: 1.5rem; }
+
+.markdown-content p {
+    margin-bottom: 1.2em;
+}
+
+.markdown-content a {
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: color 0.3s ease, text-decoration 0.3s ease;
+}
+
+.markdown-content a:hover {
+    color: var(--secondary-color);
+    text-decoration: underline;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    padding-left: 2em;
+    margin-bottom: 1.2em;
+}
+
+.markdown-content li {
+    margin-bottom: 0.5em;
+}
+
+.markdown-content blockquote {
+    border-left: 4px solid var(--primary-color);
+    padding: 1em 1.5em;
+    margin: 1.5em 0;
+    background-color: rgba(0, 242, 195, 0.05);
+    color: #f0f0f0;
+    font-style: italic;
+}
+
+.markdown-content pre {
+    background-color: #1a1a2e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1em;
+    overflow-x: auto;
+    font-family: 'Fira Code', 'Courier New', monospace;
+    font-size: 0.95em;
+    margin-bottom: 1.5em;
+}
+
+.markdown-content code {
+    background-color: rgba(253, 0, 128, 0.1);
+    color: var(--secondary-color);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    font-family: 'Fira Code', 'Courier New', monospace;
+}
+
+.markdown-content pre code {
+    background-color: transparent;
+    color: inherit;
+    padding: 0;
+    border-radius: 0;
+}
+
+.markdown-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5em;
+}
+
+.markdown-content th,
+.markdown-content td {
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 0.8em 1em;
+}
+
+.markdown-content thead {
+    background-color: #1a1a2e;
+}
+
+.markdown-content th {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.markdown-content hr {
+    border: 0;
+    height: 1px;
+    background-image: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0));
+    margin: 3em 0;
 }

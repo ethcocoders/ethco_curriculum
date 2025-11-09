@@ -1,0 +1,489 @@
+/*
+ * This file will contain styles for the enhanced course visualization cards.
+ */
+
+:root {
+    --primary-color: #00f2c3;
+    --secondary-color: #fd0080;
+    --bg-dark: #0f0c29;
+    --bg-light: #24243e;
+    --text-light: #ffffff;
+    --card-bg: rgba(50, 50, 70, 0.9);
+    --border-color: rgba(255, 255, 255, 0.1);
+    --info-color: #4ecdc4;
+    --success-color: #51cf66;
+    --warning-color: #ffd93d;
+    --danger-color: #ff6b6b;
+}
+
+.course-page-title {
+    color: var(--text-light);
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.overall-progress-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    overflow: hidden;
+}
+
+.overall-progress-card .card-header {
+    background-color: rgba(0, 0, 0, 0.3);
+    color: var(--primary-color);
+    font-weight: 600;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.overall-progress-card .card-body {
+    padding: 1.5rem;
+}
+
+.modules-grid {
+    /* Reverted to block display to make each card appear on its own line */
+    display: block;
+}
+
+/* Styling for clickable module cards */
+.course-module-card-link {
+    display: block; /* Make the entire link block-level */
+    text-decoration: none; /* Remove underline */
+    color: inherit; /* Inherit text color */
+    margin-bottom: 1.5rem; /* Maintain spacing between cards */
+}
+
+.course-module-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    overflow: hidden;
+    width: 100%; /* Ensure full width */
+    min-height: 120px; /* Added min-height to make cards bigger */
+}
+
+.course-module-card-link:hover .course-module-card {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3); /* More pronounced shadow */
+    border-color: var(--secondary-color); /* Change border color on hover */
+}
+
+.course-module-card .card-header {
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 1.5rem 2rem; /* Increased padding */
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.course-module-card .card-header h5 {
+    margin: 0;
+    flex-grow: 1;
+}
+
+.module-title-link {
+    color: var(--text-light);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.5rem; /* Increased font size */
+    transition: color 0.3s ease;
+    display: flex; /* Make the whole area clickable */
+    align-items: center;
+    flex-grow: 1;
+}
+
+.module-title-link:hover {
+    color: var(--primary-color);
+}
+
+.module-order {
+    color: var(--primary-color);
+    margin-right: 0.75rem; /* Adjusted margin */
+}
+
+.module-progress-badge {
+    background-color: var(--info-color) !important;
+    color: white !important;
+    font-weight: 500;
+    padding: 0.5em 0.8em; /* Increased padding */
+    border-radius: 5px;
+    margin-right: 1rem; /* Adjusted margin */
+}
+
+.module-collapse-btn {
+    color: var(--text-light) !important;
+    font-size: 1.2rem; /* Increased font size */
+    transition: transform 0.3s ease;
+    /* Ensure button is clickable */
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+.module-collapse-btn i {
+    pointer-events: none; /* Prevent icon from interfering with button click */
+}
+
+.module-collapse-btn[aria-expanded="true"] i {
+    transform: rotate(180deg);
+}
+
+.course-module-card .card-body {
+    padding: 2rem; /* Increased padding */
+}
+
+.submodules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem; /* Increased gap */
+    margin-top: 1.5rem;
+}
+
+/* Styling for clickable submodule cards */
+/* Removed .course-submodule-card-link as submodule cards are no longer entirely clickable */
+
+.course-submodule-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px; /* Consistent with module cards */
+    padding: 1.5rem 2rem;
+    transition: all 0.3s ease;
+    min-height: 100px; /* Slightly increased min-height */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); /* Added box-shadow */
+    margin-bottom: 1.5rem; /* Maintain spacing between cards */
+}
+
+.course-submodule-card:hover {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: var(--secondary-color); /* Changed hover border color */
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3); /* More pronounced shadow on hover */
+    transform: translateY(-3px); /* Added slight lift on hover */
+}
+
+.course-submodule-card h6 {
+    margin: 0;
+}
+
+.submodule-title-link {
+    color: var(--text-light);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.3rem;
+    transition: color 0.3s ease;
+    display: flex; /* Added flex display */
+    align-items: center; /* Align items vertically */
+    flex-grow: 1;
+}
+
+.submodule-title-link:hover {
+    color: var(--secondary-color);
+}
+
+.submodule-order {
+    color: var(--primary-color);
+    margin-right: 0.75rem;
+}
+
+.submodule-collapse-btn {
+    color: var(--text-light) !important;
+    font-size: 1.1rem;
+    transition: transform 0.3s ease;
+    flex-shrink: 0; /* Prevent button from shrinking */
+    margin-left: 0.5rem; /* Add some space between title and button */
+    /* Ensure button is clickable */
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+.submodule-collapse-btn i {
+    pointer-events: none; /* Prevent icon from interfering with button click */
+}
+
+.submodule-collapse-btn[aria-expanded="true"] i {
+    transform: rotate(180deg);
+}
+
+.content-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding-left: 1.5rem;
+    border-left: 2px solid rgba(255, 255, 255, 0.05);
+}
+
+.course-content-item-link {
+    display: block; /* Make the entire link block-level */
+    text-decoration: none; /* Remove underline */
+    color: inherit; /* Inherit text color */
+    margin-bottom: 0.75rem; /* Maintain spacing between items */
+}
+
+.course-content-item {
+    background: rgba(0, 0, 0, 0.2);
+    border-left: 3px solid var(--primary-color);
+    border-radius: 6px;
+    padding: 1rem 1.25rem; /* Increased padding */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.course-content-item-link:hover .course-content-item {
+    background: rgba(0, 242, 195, 0.1);
+    border-left-color: var(--secondary-color);
+}
+
+.content-item-details {
+    color: #ddd;
+    font-size: 1rem; /* Increased font size */
+    display: flex;
+    align-items: center;
+}
+
+.content-item-details a {
+    color: #ddd;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.content-item-details a:hover {
+    color: var(--primary-color);
+}
+
+.content-icon {
+    font-size: 1.2rem; /* Increased font size */
+    margin-right: 0.75rem;
+    width: 28px; /* Fixed width for alignment */
+    text-align: center;
+}
+
+.quiz-icon {
+    color: var(--info-color);
+}
+
+.lab-icon {
+    color: var(--warning-color);
+}
+
+.session-icon {
+    color: var(--secondary-color);
+}
+
+.content-status-badge {
+    font-weight: 500;
+    padding: 0.4em 0.7em; /* Increased padding */
+    border-radius: 4px;
+    font-size: 0.9rem; /* Increased font size */
+}
+
+/* Admin Actions Styling */
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+    gap: 0.5rem; /* Space between buttons */
+    margin-top: 1rem; /* Space above actions */
+    margin-bottom: 1rem; /* Space below actions */
+    justify-content: flex-end; /* Align buttons to the right */
+}
+
+.admin-actions .btn {
+    flex-shrink: 0; /* Prevent buttons from shrinking */
+}
+
+
+/* --- Curriculum Card Styles for module_viewer.html --- */
+.curriculum-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* Responsive grid */
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.curriculum-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: var(--text-light);
+    transition: all 0.3s ease;
+    min-height: 100px;
+}
+
+.curriculum-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    border-color: var(--primary-color);
+}
+
+.curriculum-card-icon {
+    font-size: 2.5rem;
+    color: var(--primary-color);
+    margin-right: 1rem;
+    flex-shrink: 0;
+}
+
+.curriculum-card-content {
+    flex-grow: 1;
+}
+
+.curriculum-card-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--text-light);
+}
+
+.curriculum-card .badge {
+    font-size: 0.75rem;
+    padding: 0.3em 0.6em;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .course-page-title {
+        font-size: 2rem;
+    }
+    .course-module-card .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    .module-progress-badge {
+        margin-right: 0;
+    }
+    .submodule-title-link {
+        font-size: 1.1rem;
+    }
+    .course-submodule-card {
+        padding: 1rem 1.25rem;
+    }
+    .content-item-details {
+        font-size: 0.95rem;
+    }
+    .content-icon {
+        font-size: 1.1rem;
+        margin-right: 0.5rem;
+        width: 25px;
+    }
+
+    /* Adjust header buttons for small screens */
+    .container.mt-4 .d-flex.justify-content-between.align-items-center.mb-4 {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    .container.mt-4 .d-flex.justify-content-between.align-items-center.mb-4 h1.course-page-title {
+        font-size: 1.8rem; /* Smaller header title */
+        margin-bottom: 0.5rem;
+    }
+    .container.mt-4 .d-flex.justify-content-between.align-items-center.mb-4 .btn {
+        padding: 0.5rem 0.8rem; /* Smaller button padding */
+        font-size: 0.9rem; /* Smaller button font size */
+    }
+}
+
+@media (max-width: 480px) {
+    .course-page-title {
+        font-size: 1.8rem;
+    }
+    .module-title-link {
+        font-size: 1.3rem;
+    }
+    .course-module-card .card-body {
+        padding: 1.5rem;
+    }
+    .submodules-list {
+        gap: 0.75rem;
+    }
+    .course-submodule-card {
+        padding: 0.75rem 1rem;
+    }
+    .content-items-list {
+        padding-left: 1rem;
+    }
+    .course-content-item {
+        padding: 0.75rem 1rem;
+    }
+    .container.mt-4 .d-flex.justify-content-between.align-items-center.mb-4 h1.course-page-title {
+        font-size: 1.5rem; /* Even smaller header title */
+    }
+    .container.mt-4 .d-flex.justify-content-between.align-items-center.mb-4 .btn {
+        padding: 0.4rem 0.7rem; /* Even smaller button padding */
+        font-size: 0.8rem; /* Even smaller button font size */
+    }
+}
+
+/* --- Curriculum Entities Grid for module_viewer.html --- */
+.curriculum-entities-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); /* Responsive grid */
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.curriculum-entities-grid .course-submodule-card,
+.curriculum-entities-grid .course-content-item {
+    background: var(--card-bg); /* Reverted to original background color */
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+    min-height: 100px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.curriculum-entities-grid .course-submodule-card:hover,
+.curriculum-entities-grid .course-content-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    border-color: var(--secondary-color);
+}
+
+.curriculum-entities-grid .course-submodule-card .submodule-title-link {
+    font-size: 1.4rem; /* Slightly larger title for main cards */
+    font-weight: 700;
+    color: var(--text-light);
+}
+
+.curriculum-entities-grid .course-submodule-card .submodule-title-link:hover {
+    color: var(--primary-color);
+}
+
+.curriculum-entities-grid .course-submodule-card .submodule-order {
+    color: var(--primary-color);
+}
+
+.curriculum-entities-grid .course-content-item .content-item-details {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-light);
+}
+
+.curriculum-entities-grid .course-content-item .content-item-details a {
+    color: var(--text-light);
+}
+
+.curriculum-entities-grid .course-content-item .content-item-details a:hover {
+    color: var(--primary-color);
+}
+
+.curriculum-entities-grid .course-content-item .content-icon {
+    font-size: 1.5rem;
+}

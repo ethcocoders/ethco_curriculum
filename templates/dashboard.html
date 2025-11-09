@@ -1,6 +1,10 @@
 <!-- templates/dashboard.html -->
 {% extends "base.html" %}
 
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard_cards.css') }}">
+{% endblock %}
+
 {% block title %}Your Dashboard{% endblock %}
 
 {% block content %}
@@ -103,68 +107,72 @@
     </div>
 
     <h3 class="mt-5 mb-3">Start Learning</h3>
-    <div class="row g-4">
+    <div class="row g-4 learning-cards-grid">
         <div class="col-md-6 col-lg-4">
-            <div class="card text-dark bg-secondary h-100 shadow">
-                <div class="card-body text-center d-flex flex-column justify-content-center">
-                    <i class="fas fa-cog fs-1 mb-2"></i>
-                    <h5 class="card-title">Profile Settings</h5>
-                    <p class="card-text">Manage your profile information and account settings.</p>
-                    <a href="{{ url_for('profile_settings') }}" class="btn btn-light stretched-link">Go to Settings</a>
+            <a href="{{ url_for('profile_settings') }}" class="text-decoration-none learning-card-link">
+                <div class="learning-card learning-card-settings h-100 shadow">
+                    <div class="card-body text-center d-flex flex-column justify-content-center align-items-center">
+                        <div class="learning-card-icon"><i class="fas fa-cog"></i></div>
+                        <h5 class="card-title mt-3">Profile Settings</h5>
+                        <p class="card-text">Manage your profile information and account settings.</p>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-6 col-lg-4">
-            <div class="card text-dark bg-primary h-100 shadow">
-                <div class="card-body text-center d-flex flex-column justify-content-center">
-                    <i class="bi bi-patch-question-fill fs-1 mb-2"></i>
-                    <h5 class="card-title">Quizzes</h5>
-                    <p class="card-text">Test your knowledge with multiple-choice questions.</p>
-                    <a href="{{ url_for('course_dashboard') }}" class="btn btn-light stretched-link">View Quizzes</a>
+            <a href="{{ url_for('course_dashboard') }}" class="text-decoration-none learning-card-link">
+                <div class="learning-card learning-card-quizzes h-100 shadow">
+                    <div class="card-body text-center d-flex flex-column justify-content-center align-items-center">
+                        <div class="learning-card-icon"><i class="fas fa-question-circle"></i></div>
+                        <h5 class="card-title mt-3">Quizzes</h5>
+                        <p class="card-text">Test your knowledge with multiple-choice questions.</p>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-6 col-lg-4">
-            <div class="card text-dark bg-success h-100 shadow">
-                <div class="card-body text-center d-flex flex-column justify-content-center">
-                    <i class="bi bi-terminal-fill fs-1 mb-2"></i>
-                    <h5 class="card-title">Hands-on Labs</h5>
-                    <p class="card-text">Follow guided, step-by-step practical exercises.</p>
-                    <a href="{{ url_for('course_dashboard') }}" class="btn btn-light stretched-link">View Labs</a>
+            <a href="{{ url_for('course_dashboard') }}" class="text-decoration-none learning-card-link">
+                <div class="learning-card learning-card-labs h-100 shadow">
+                    <div class="card-body text-center d-flex flex-column justify-content-center align-items-center">
+                        <div class="learning-card-icon"><i class="fas fa-flask"></i></div>
+                        <h5 class="card-title mt-3">Hands-on Labs</h5>
+                        <p class="card-text">Follow guided, step-by-step practical exercises.</p>
+                    </div>
                 </div>
-            </div>
-        </div>
-
-
-        <div class="col-md-6 col-lg-4">
-            <div class="card text-dark bg-info h-100 shadow">
-                <div class="card-body text-center d-flex flex-column justify-content-center">
-                    <i class="bi bi-code-square fs-1 mb-2"></i>
-                    <h5 class="card-title">Practical Sessions</h5>
-                    <p class="card-text">Apply your skills in open-ended coding challenges.</p>
-                    <a href="{{ url_for('course_dashboard') }}" class="btn btn-light stretched-link">View Sessions</a>
-                </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-6 col-lg-4">
-            <div class="card text-dark bg-warning h-100 shadow">
-                <div class="card-body text-center d-flex flex-column justify-content-center">
-                    <i class="fas fa-certificate fs-1 mb-2"></i>
-                    <h5 class="card-title">Certificates</h5>
-                    <p class="card-text">View and manage your earned certificates.</p>
-                    <a href="{{ url_for('certificates_list') }}" class="btn btn-light stretched-link">View Certificates</a>
+            <a href="{{ url_for('course_dashboard') }}" class="text-decoration-none learning-card-link">
+                <div class="learning-card learning-card-sessions h-100 shadow">
+                    <div class="card-body text-center d-flex flex-column justify-content-center align-items-center">
+                        <div class="learning-card-icon"><i class="fas fa-code"></i></div>
+                        <h5 class="card-title mt-3">Practical Sessions</h5>
+                        <p class="card-text">Apply your skills in open-ended coding challenges.</p>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-6 col-lg-4">
-            <div class="card text-dark bg-danger h-100 shadow">
-                <div class="card-body text-center d-flex flex-column justify-content-center">
-                    <i class="fas fa-book fs-1 mb-2"></i>
-                    <h5 class="card-title">Notes</h5>
-                    <p class="card-text">Review your personal notes and course materials.</p>
-                    <a href="{{ url_for('course_dashboard') }}" class="btn btn-light stretched-link">View Notes</a>
+            <a href="{{ url_for('certificates_list') }}" class="text-decoration-none learning-card-link">
+                <div class="learning-card learning-card-certificates h-100 shadow">
+                    <div class="card-body text-center d-flex flex-column justify-content-center align-items-center">
+                        <div class="learning-card-icon"><i class="fas fa-certificate"></i></div>
+                        <h5 class="card-title mt-3">Certificates</h5>
+                        <p class="card-text">View and manage your earned certificates.</p>
+                    </div>
                 </div>
-            </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <a href="{{ url_for('course_dashboard') }}" class="text-decoration-none learning-card-link">
+                <div class="learning-card learning-card-notes h-100 shadow">
+                    <div class="card-body text-center d-flex flex-column justify-content-center align-items-center">
+                        <div class="learning-card-icon"><i class="fas fa-book"></i></div>
+                        <h5 class="card-title mt-3">Notes</h5>
+                        <p class="card-text">Review your personal notes and course materials.</p>
+                    </div>
+                </div>
+            </a>
         </div>
     </div>
 {% endblock %}

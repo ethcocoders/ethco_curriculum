@@ -7,13 +7,11 @@
     <h1 class="mb-4">{{ note.title }}</h1>
     
     <div class="card">
-        <div class="card-body">
-            {{ note.content|markdown }}
+        <div class="card-body markdown-content">
+            {{ note.content|markdown|safe }}
         </div>
     </div>
 
-    <div class="mt-4">
-        <a href="{{ url_for('quiz_viewer', quiz_id=note.quiz.id) }}" class="btn btn-primary">Take the Quiz</a>
-    </div>
+
 </div>
 {% endblock %}
